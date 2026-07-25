@@ -692,7 +692,7 @@ class Scanner:
                 self.tg.send(f"🟢 <b>{len(to_send)}</b> tín hiệu mới lúc {stamp}{extra} "
                              f"· cao nhất ${_esc(top.symbol)} ({top.score})")
             else:
-                self.tg.send(f"⚪ Không có tín hiệu đạt ngưỡng lúc {stamp}")
+                self.tg.send(f"⚪ Không có tín hiệu ở BASE đạt ngưỡng lúc {stamp}")
         return to_send
 
     def _print(self, c: Candidate):
