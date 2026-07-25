@@ -683,16 +683,13 @@ class Scanner:
             self.seen.add(c.token_address)  # chỉ đánh dấu seen cái đã gửi
         self._save_seen()
 
-        # dòng tổng kết (tùy chọn) để anh biết bot còn sống dù 0 hit
-        if self.cfg.telegram_send_summary and self.tg.enabled:
+       # dòng tổng kết: CHỈ gửi khi có tín hiệu mới, im lặng khi 0 hit
+        if self.cfg.telegram_send_summary and self.tg.enabled and to_send:
             stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
-            if to_send:
-                top = to_send[0]
-                extra = f" (+{held} chờ lượt sau)" if held else ""
-                self.tg.send(f"🟢 <b>{len(to_send)}</b> tín hiệu mới lúc {stamp}{extra} "
-                             f"· cao nhất ${_esc(top.symbol)} ({top.score})")
-            else:
-                self.tg.send(f"⚪ Không có tín hiệu đạt ngưỡng lúc {stamp}")
+            top = to_send[0]
+            extra = f" (+{held} chờ lượt sau)" if held else ""
+            self.tg.send(f"🟢 <b>{len(to_send)}</b> tín hiệu mới lúc {stamp}{extra} "
+                         f"· cao nhất ${_esc(top.symbol)} ({top.score})")
         return to_send
 
     def _print(self, c: Candidate):
