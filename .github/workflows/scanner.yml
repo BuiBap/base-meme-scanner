@@ -58,13 +58,18 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # chỉ commit khi có thay đổi thật
-          if [ -n "$(git status --porcelain base_seen.json base_signals.csv)" ]; then
-            git add base_seen.json base_signals.csv
+
+          # chỉ add những file THỰC SỰ tồn tại (base_signals.csv có thể chưa được tạo
+          # nếu lần quét này 0 tín hiệu đạt ngưỡng)
+          FILES_TO_ADD=""
+          [ -f base_seen.json ] && FILES_TO_ADD="$FILES_TO_ADD base_seen.json"
+          [ -f base_signals.csv ] && FILES_TO_ADD="$FILES_TO_ADD base_signals.csv"
+
+          if [ -n "$FILES_TO_ADD" ] && [ -n "$(git status --porcelain $FILES_TO_ADD)" ]; then
+            git add $FILES_TO_ADD
             git commit -m "state: cập nhật seen/signals [skip ci]"
-            # kéo về trước khi push để tránh xung đột với lần chạy khác
             git pull --rebase --autostash origin ${{ github.ref_name }} || true
             git push
           else
-            echo "Không có thay đổi state để commit."
+            echo "Không có thay đổi state để commit (hoặc chưa có file nào được tạo)."
           fi
