@@ -1,0 +1,70 @@
+name: base-meme-scanner
+
+# --------------------------------------------------------------------------- #
+# Quét memecoin trên Base theo lịch, gửi cảnh báo Telegram.
+#
+# LƯU Ý QUAN TRỌNG:
+#  - Dùng repo PUBLIC để có phút Actions miễn phí KHÔNG giới hạn.
+#    Repo private chỉ ~2000 phút/tháng -> chạy 5' sẽ cháy quota trong vài ngày.
+#  - Cron tối thiểu 5 phút và THƯỜNG BỊ TRỄ 10-30 phút lúc GitHub tải cao.
+#    Không hợp cho snipe tính bằng giây; hợp để bắt trend định kỳ.
+#  - Lịch chỉ chạy trên nhánh mặc định (main/master).
+#  - Bước commit state ngược lại repo cũng giữ cho workflow không bị
+#    tự tắt sau 60 ngày không hoạt động.
+# --------------------------------------------------------------------------- #
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'      # mỗi 5 phút (giá trị nhỏ hơn sẽ KHÔNG chạy)
+  workflow_dispatch:           # nút bấm chạy tay trong tab Actions (để test)
+
+# Không cho 2 lần quét chạy chồng nhau -> tránh xung đột khi commit state.
+concurrency:
+  group: scanner
+  cancel-in-progress: false
+
+permissions:
+  contents: write              # cần để commit seen.json + csv ngược lại repo
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10        # 1 lần quét không nên quá lâu; job tối đa 6h dù sao
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run scan (1 lần)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # optional — chỉ cần nếu anh cắm hook trả phí:
+          BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
+          TWEETSCOUT_API_KEY: ${{ secrets.TWEETSCOUT_API_KEY }}
+          SMART_MONEY_API_KEY: ${{ secrets.SMART_MONEY_API_KEY }}
+          MAX_ALERTS_PER_RUN: '8'
+        run: python base_meme_bot.py        # chế độ mặc định = quét 1 lần rồi thoát
+
+      - name: Commit state (seen + csv)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # chỉ commit khi có thay đổi thật
+          if [ -n "$(git status --porcelain base_seen.json base_signals.csv)" ]; then
+            git add base_seen.json base_signals.csv
+            git commit -m "state: cập nhật seen/signals [skip ci]"
+            # kéo về trước khi push để tránh xung đột với lần chạy khác
+            git pull --rebase --autostash origin ${{ github.ref_name }} || true
+            git push
+          else
+            echo "Không có thay đổi state để commit."
+          fi
