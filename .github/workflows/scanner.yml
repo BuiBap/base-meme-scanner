@@ -52,6 +52,7 @@ jobs:
           TWEETSCOUT_API_KEY: ${{ secrets.TWEETSCOUT_API_KEY }}
           SMART_MONEY_API_KEY: ${{ secrets.SMART_MONEY_API_KEY }}
           MAX_ALERTS_PER_RUN: '8'
+          BLOCKSCOUT_API_KEY: ${{ secrets.BLOCKSCOUT_API_KEY }}
         run: python base_meme_bot.py        # chế độ mặc định = quét 1 lần rồi thoát
 
       - name: Commit state (seen + csv)
