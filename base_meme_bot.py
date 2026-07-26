@@ -97,7 +97,8 @@ class Config:
     # ---------- Telegram ----------
     telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
-    telegram_send_summary: bool = True   # gửi 1 dòng tổng kết mỗi lần quét (kể cả 0 hit)
+   heartbeat_file: str = "base_heartbeat.json"
+    heartbeat_interval_hours: float = 24.0   # "không có tín hiệu" chỉ báo 1 lần/khoảng thời gian này
     max_alerts_per_run: int = int(os.getenv("MAX_ALERTS_PER_RUN", "8"))  # chống flood/lần
 
 
