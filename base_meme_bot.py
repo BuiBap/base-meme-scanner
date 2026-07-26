@@ -499,32 +499,27 @@ def compute_net_buy_volume(c: Candidate, cfg: Config, gt: GeckoTerminal):
     c.net_buy_vs_liq_1h_pct = (net_1h / c.liquidity_usd * 100) if c.liquidity_usd > 0 else None
 
 
-# =========================================================================== #
-#  HOOKS — KHÔNG có API free. Cắm nguồn trả phí của anh vào đây.
-# =========================================================================== #
+# --- nguồn miễn phí (module free_sources.py) ---
+try:
+    import free_sources
+except ImportError:
+    free_sources = None
 
 def hook_fresh_wallet_ratio(token_address: str, cfg: Config) -> Optional[float]:
-    """% supply nằm ở ví tạo <24h. Cần enumerate holders (Basescan) + first-tx của từng ví.
-    Rất nặng call -> tự triển khai nếu có BASESCAN_API_KEY và chấp nhận chi phí."""
-    if not cfg.basescan_api_key:
+    if free_sources is None:
         return None
-    # TODO: Etherscan V2 multichain (chainid=8453): tokenholderlist -> với mỗi ví lấy txlist sớm nhất.
-    return None
+    return free_sources.fresh_wallet_ratio(token_address)
 
 def hook_smart_money(token_address: str, cfg: Config) -> Optional[dict]:
-    """Tín hiệu smart-money chất lượng cao (WinRate>60%, PnL30d>$50k, >=3 ví độc lập gom trong 30').
-    GMGN không có API public; Arkham/Nansen/Cielo cần key trả phí. Trả None = bỏ qua."""
+    # Không có nguồn miễn phí. Rẻ nhất là Cielo Whale $199/thang (API chi mo o tier nay).
     if not cfg.smart_money_api_key:
         return None
-    # TODO: cắm provider của anh, trả {"wallets": n, "usd_bought": x, "avg_winrate": y}
     return None
 
 def hook_social_score(token_address: str, symbol: str, cfg: Config) -> Optional[float]:
-    """TweetScout X-Score / Kaito Mindshare / KOL bluecheck %. Cần key trả phí."""
-    if not cfg.tweetscout_api_key:
+    if free_sources is None:
         return None
-    # TODO: cắm TweetScout/Kaito, trả điểm chuẩn hoá 0-100
-    return None
+    return free_sources.social_presence_score(token_address, symbol)
 
 
 # =========================================================================== #
