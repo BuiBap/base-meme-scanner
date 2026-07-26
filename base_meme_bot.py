@@ -593,14 +593,14 @@ def score_candidate(c: Candidate, cfg: Config):
 #  Scanner
 # =========================================================================== #
 
-class Scanner:
-    def __init__(self, cfg: Config):
+def __init__(self, cfg: Config):
         self.cfg = cfg
         self.http = HttpClient(cfg)
         self.gt = GeckoTerminal(self.http, cfg)
         self.gp = GoPlus(self.http, cfg)
         self.tg = TelegramNotifier(cfg)
         self.seen = self._load_seen()
+        self.last_heartbeat = self._load_heartbeat()
 
     def _load_seen(self) -> set:
         if os.path.exists(self.cfg.seen_file):
@@ -613,6 +613,20 @@ class Scanner:
     def _save_seen(self):
         try:
             json.dump(sorted(self.seen), open(self.cfg.seen_file, "w"))
+        except Exception:
+            pass
+
+    def _load_heartbeat(self) -> float:
+        if os.path.exists(self.cfg.heartbeat_file):
+            try:
+                return float(json.load(open(self.cfg.heartbeat_file)).get("last_heartbeat", 0))
+            except Exception:
+                return 0.0
+        return 0.0
+
+    def _save_heartbeat(self):
+        try:
+            json.dump({"last_heartbeat": self.last_heartbeat}, open(self.cfg.heartbeat_file, "w"))
         except Exception:
             pass
 
@@ -679,7 +693,7 @@ class Scanner:
             self.seen.add(c.token_address)  # chỉ đánh dấu seen cái đã gửi
         self._save_seen()
 
-      # dòng tổng kết (tùy chọn) để anh biết bot còn sống dù 0 hit
+     # Có tín hiệu -> báo NGAY. Không có tín hiệu -> chỉ báo 1 lần/24h (heartbeat).
         if self.cfg.telegram_send_summary and self.tg.enabled:
             stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
             if to_send:
@@ -688,7 +702,11 @@ class Scanner:
                 self.tg.send(f"🟢 <b>{len(to_send)}</b> tín hiệu mới lúc {stamp}{extra} "
                              f"· cao nhất ${_esc(top.symbol)} ({top.score})")
             else:
-                self.tg.send(f"⚪ Không có tín hiệu ở BASE đạt ngưỡng lúc {stamp}")
+                elapsed_h = (time.time() - self.last_heartbeat) / 3600.0
+                if elapsed_h >= self.cfg.heartbeat_interval_hours:
+                    self.tg.send(f"⚪ Không có tín hiệu ở BASE đạt ngưỡng lúc {stamp}")
+                    self.last_heartbeat = time.time()
+                    self._save_heartbeat()
         return to_send
 
     def _print(self, c: Candidate):
