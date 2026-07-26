@@ -38,8 +38,13 @@ import requests
 #  Cấu hình
 # --------------------------------------------------------------------------- #
 
-BLOCKSCOUT_BASE = os.getenv("BLOCKSCOUT_BASE_URL", "https://base.blockscout.com")
-BLOCKSCOUT_KEY = os.getenv("BLOCKSCOUT_API_KEY", "")   # free key: dev.blockscout.com
+# Blockscout đã chuyển sang PRO API hợp nhất đa chain (từ dev.blockscout.com).
+# Có 2 kiểu URL khác nhau cho 2 họ endpoint (đã xác nhận qua docs.blockscout.com):
+#   - REST v2 (holders, counters...) : path-based -> api.blockscout.com/{chain_id}/api/v2/...
+#   - Legacy Etherscan-compat (txlist): query-based -> api.blockscout.com/v2/api?chain_id=...
+BLOCKSCOUT_PRO = "https://api.blockscout.com"
+BLOCKSCOUT_CHAIN_ID = os.getenv("BLOCKSCOUT_CHAIN_ID", "8453")   # Base
+BLOCKSCOUT_KEY = os.getenv("BLOCKSCOUT_API_KEY", "")             # free key: dev.blockscout.com (proapi_...)
 GT_API = "https://api.geckoterminal.com/api/v2"
 DEXSCREENER = "https://api.dexscreener.com"
 
@@ -76,10 +81,11 @@ def _get(url: str, min_interval: float = 0.3, timeout: int = 15) -> Optional[dic
                 time.sleep(delay * (2 ** (attempt - 1)))
                 continue
             if r.status_code in (401, 403):
-                # Blockscout sau 01/07/2026 cần key -> báo 1 lần rồi thôi
                 if "blockscout" in host and not BLOCKSCOUT_KEY:
-                    print("    [blockscout] cần API key miễn phí -> lấy tại https://dev.blockscout.com "
+                    print("    [blockscout] cần API key -> lấy free tại https://dev.blockscout.com "
                           "rồi set BLOCKSCOUT_API_KEY")
+                elif "blockscout" in host:
+                    print("    [blockscout] key có thể sai/hết credit -> kiểm tra dev.blockscout.com/dashboard")
                 return None
             if 500 <= r.status_code < 600:
                 time.sleep(delay * (2 ** (attempt - 1)))
@@ -90,17 +96,22 @@ def _get(url: str, min_interval: float = 0.3, timeout: int = 15) -> Optional[dic
     return None
 
 
-def _bs_url(path: str, extra: str = "") -> str:
-    """Ghép URL Blockscout, tự thêm apikey nếu có."""
-    sep = "&" if "?" in path else "?"
-    url = f"{BLOCKSCOUT_BASE}{path}"
-    params = []
-    if extra:
-        params.append(extra)
+def _bs_rest_url(path: str) -> str:
+    """URL cho họ REST v2 (path-based): /{chain_id}/api/v2/tokens/{addr}/holders..."""
+    url = f"{BLOCKSCOUT_PRO}/{BLOCKSCOUT_CHAIN_ID}/api/v2{path}"
     if BLOCKSCOUT_KEY:
-        params.append(f"apikey={BLOCKSCOUT_KEY}")
-    if params:
-        url += sep + "&".join(params)
+        sep = "&" if "?" in path else "?"
+        url += f"{sep}apikey={BLOCKSCOUT_KEY}"
+    return url
+
+
+def _bs_legacy_url(module: str, action: str, extra: str = "") -> str:
+    """URL cho họ Etherscan-compat cũ (query-based): /v2/api?chain_id=...&module=...&action=..."""
+    url = f"{BLOCKSCOUT_PRO}/v2/api?chain_id={BLOCKSCOUT_CHAIN_ID}&module={module}&action={action}"
+    if extra:
+        url += f"&{extra}"
+    if BLOCKSCOUT_KEY:
+        url += f"&apikey={BLOCKSCOUT_KEY}"
     return url
 
 
@@ -157,14 +168,14 @@ def dexscreener_boost(token_address: str, chain_id: str = "base") -> int:
 
 def blockscout_holder_count(token_address: str) -> Optional[int]:
     """Số holder THẬT của token. GeckoTerminal/DexScreener không trả field này."""
-    d = _get(_bs_url(f"/api/v2/tokens/{token_address}/counters"), min_interval=0.3)
+    d = _get(_bs_rest_url(f"/tokens/{token_address}/counters"), min_interval=0.3)
     if isinstance(d, dict) and d.get("token_holders_count") is not None:
         try:
             return int(d["token_holders_count"])
         except (TypeError, ValueError):
             return None
     # fallback: endpoint token info
-    d = _get(_bs_url(f"/api/v2/tokens/{token_address}"), min_interval=0.3)
+    d = _get(_bs_rest_url(f"/tokens/{token_address}"), min_interval=0.3)
     if isinstance(d, dict) and d.get("holders") is not None:
         try:
             return int(d["holders"])
@@ -177,8 +188,8 @@ def _wallet_first_tx_age_hours(address: str) -> Optional[float]:
     """Tuổi ví = thời gian từ giao dịch ĐẦU TIÊN đến giờ.
     Dùng endpoint Etherscan-compat với sort=asc&offset=1 -> lấy tx cũ nhất trong 1 call
     (REST v2 trả mới-nhất-trước nên phải phân trang rất tốn, không dùng)."""
-    url = _bs_url("/api", f"module=account&action=txlist&address={address}"
-                          f"&sort=asc&page=1&offset=1")
+    url = _bs_legacy_url("account", "txlist",
+                        f"address={address}&sort=asc&page=1&offset=1")
     d = _get(url, min_interval=0.25)
     if not isinstance(d, dict):
         return None
@@ -204,7 +215,7 @@ def fresh_wallet_ratio(token_address: str,
 
     Trả None nếu không đủ dữ liệu (thà không biết còn hơn báo số sai).
     """
-    d = _get(_bs_url(f"/api/v2/tokens/{token_address}/holders"), min_interval=0.3)
+    d = _get(_bs_rest_url(f"/tokens/{token_address}/holders"), min_interval=0.3)
     if not isinstance(d, dict):
         return None
     items = d.get("items")
