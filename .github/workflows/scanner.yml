@@ -65,6 +65,7 @@ jobs:
           FILES_TO_ADD=""
           [ -f base_seen.json ] && FILES_TO_ADD="$FILES_TO_ADD base_seen.json"
           [ -f base_signals.csv ] && FILES_TO_ADD="$FILES_TO_ADD base_signals.csv"
+          [ -f base_heartbeat.json ] && FILES_TO_ADD="$FILES_TO_ADD base_heartbeat.json"
 
           if [ -n "$FILES_TO_ADD" ] && [ -n "$(git status --porcelain $FILES_TO_ADD)" ]; then
             git add $FILES_TO_ADD
