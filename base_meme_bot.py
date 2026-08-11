@@ -19,6 +19,18 @@ Luồng (funnel để tiết kiệm rate-limit 30 req/phút của GeckoTerminal)
   4) Xác nhận net-buy-volume    : trades endpoint (chỉ cho shortlist)
   5) Chấm điểm + báo + ghi CSV
 
+[VÁ base v2 — holder concentration]
+  GoPlus trả mảng "holders" RỖNG cho phần lớn token Base mới (chưa kịp index trong
+  ~1-2h đầu — đúng lúc bot quét). Bản cũ gán top20_holder_pct = 0.0 khi mảng rỗng,
+  tức là số 0 GIẢ: vừa làm bộ lọc insider/cluster KHÔNG BAO GIỜ loại được ai (0 luôn
+  <= ngưỡng 12%), vừa khiến score_candidate cộng khống +10 điểm "phân phối tốt".
+  Kiểm chứng lại 1 tín hiệu cũ (ATLAS, ghi top20=0.0 lúc quét) bằng đúng công thức
+  của bot sau khi GoPlus đã index đủ: ra 92.06% — lẽ ra phải bị K.O từ đầu.
+  Nay: holders rỗng -> gán None ("không biết", khác 0%), không cộng điểm, không KO
+  nhầm. Đồng thời loại các ví PoolManager/vault của DEX (Uniswap V4 trên Base dùng
+  1 ví PoolManager chung cho rất nhiều pool -> không phải insider) khỏi phép cộng,
+  lấy địa chỉ từ chính field dex[].pool_manager mà GoPlus trả về — KHÔNG hardcode.
+
 Chạy:
     pip install requests
     python base_meme_bot.py                 # quét 1 lần
@@ -55,7 +67,8 @@ class Config:
     slippage_trade_size_usd: float = 1_000
     max_slippage_pct: float = 3.0
 
-    # Insider/Cluster: top-20 ví (đã trừ LP/locked/burn) > 12% -> loại (PROXY qua GoPlus)
+    # Insider/Cluster: top-20 ví (đã trừ LP/locked/burn/pool_manager) > 12% -> loại
+    # (PROXY qua GoPlus). Chỉ áp dụng khi GoPlus có dữ liệu holders (không rỗng).
     max_top20_holder_pct: float = 12.0
 
     # Fresh Wallet Ratio > 35% -> loại  (HOOK — mặc định TẮT vì không có data free)
@@ -442,20 +455,41 @@ def ko_stage2_goplus(c: Candidate, cfg: Config, gp: GoPlus) -> Optional[str]:
     if c.buy_tax > cfg.max_tax_pct or c.sell_tax > cfg.max_tax_pct:
         return f"tax buy/sell {c.buy_tax:.1f}%/{c.sell_tax:.1f}% > {cfg.max_tax_pct}%"
 
-    # Top-holder concentration (proxy insider/cluster): trừ LP/locked/burn
-    holders = sec.get("holders", []) or []
-    burn_tags = ("lp", "burn", "null", "dead", "lock")
-    conc = 0.0
-    for h in holders[:20]:
-        if str(h.get("is_locked", "0")) == "1":
-            continue
-        tag = (h.get("tag") or "").lower()
-        if any(b in tag for b in burn_tags):
-            continue
-        conc += f(h.get("percent")) * 100
-    c.top20_holder_pct = round(conc, 2)
-    if c.top20_holder_pct > cfg.max_top20_holder_pct:
-        return f"top20 holders {c.top20_holder_pct:.1f}% > {cfg.max_top20_holder_pct}% (insider/cluster)"
+    # Top-holder concentration (proxy insider/cluster): trừ LP/locked/burn/pool_manager
+    # [VÁ] GoPlus trả mảng "holders" RỖNG cho phần lớn token Base mới (chưa kịp index
+    # trong ~1-2h đầu — đúng lúc bot quét). Trước đây holders rỗng bị gán 0.0 (số 0
+    # GIẢ): vừa vô hiệu hoá K.O insider (0 luôn <= ngưỡng), vừa cộng khống +10 điểm
+    # "phân phối tốt" ở score_candidate. Nay: rỗng -> None ("không biết", khác 0%),
+    # score_candidate đã tự bỏ qua phần thưởng khi None nên không cần sửa ở đó.
+    holders = sec.get("holders") or []
+    if not holders:
+        c.top20_holder_pct = None
+    else:
+        # UniswapV4 trên Base gom LP của rất nhiều pool vào chung 1 ví PoolManager
+        # -> ví đó luôn nắm % lớn nhất nhưng KHÔNG phải insider. Loại nó ra bằng
+        # chính địa chỉ GoPlus trả trong dex[].pool_manager, không hardcode.
+        dex_infra_addrs = {
+            (d.get("pool_manager") or "").lower()
+            for d in (sec.get("dex") or [])
+            if isinstance(d, dict) and d.get("pool_manager")
+        }
+        burn_tags = ("lp", "burn", "null", "dead", "lock")
+        conc = 0.0
+        for h in holders[:20]:
+            if not isinstance(h, dict):
+                continue
+            if str(h.get("is_locked", "0")) == "1":
+                continue
+            addr = (h.get("address") or "").lower()
+            if addr in dex_infra_addrs:
+                continue
+            tag = (h.get("tag") or "").lower()
+            if any(b in tag for b in burn_tags):
+                continue
+            conc += f(h.get("percent")) * 100
+        c.top20_holder_pct = round(conc, 2)
+        if c.top20_holder_pct > cfg.max_top20_holder_pct:
+            return f"top20 holders {c.top20_holder_pct:.1f}% > {cfg.max_top20_holder_pct}% (insider/cluster)"
 
     # Fresh wallet KO (HOOK) — chỉ chạy nếu bật + có nguồn
     if cfg.enforce_fresh_wallet_ko:
@@ -562,6 +596,8 @@ def score_candidate(c: Candidate, cfg: Config):
         score += 7
 
     # 5) Holder concentration thấp = an toàn (tối đa 10)
+    # top20_holder_pct == None nghĩa là GoPlus chưa có dữ liệu holders (token quá
+    # mới) -> KHÔNG BIẾT, nên không thưởng cũng không phạt điểm ở đây.
     if c.top20_holder_pct is not None:
         if c.top20_holder_pct <= 6:
             score += 10; reasons.append(f"phân phối tốt (top20 {c.top20_holder_pct:.0f}%)")
@@ -715,8 +751,9 @@ class Scanner:
         print(f"\n  ⭐ [{c.score}] {c.symbol} — {c.name}")
         print(f"     MC ${c.market_cap:,.0f} | Liq ${c.liquidity_usd:,.0f} "
               f"(LP/MC {c.lp_mc_ratio*100:.1f}%) | Vol24h ${c.volume_24h:,.0f} | tuổi {c.age_hours:.0f}h")
+        top20_str = f"{c.top20_holder_pct:.0f}%" if c.top20_holder_pct is not None else "n/a"
         print(f"     Txs/Maker {c.txs_maker_ratio:.1f} | tax {c.buy_tax:.1f}/{c.sell_tax:.1f}% "
-              f"| top20 {c.top20_holder_pct}% | slip$1k≈{c.slippage_est_pct:.1f}%")
+              f"| top20 {top20_str} | slip$1k≈{c.slippage_est_pct:.1f}%")
         bv5 = f"{c.buy_sell_vol_ratio_5m:.2f}" if c.buy_sell_vol_ratio_5m else "-"
         bv15 = f"{c.buy_sell_vol_ratio_15m:.2f}" if c.buy_sell_vol_ratio_15m else "-"
         nb = f"{c.net_buy_vs_liq_1h_pct:+.0f}%" if c.net_buy_vs_liq_1h_pct is not None else "-"
