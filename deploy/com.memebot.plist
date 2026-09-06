@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Chạy bot 24/7 trên macOS bằng launchd.
+
+  Cài:
+      cd ~/base-meme-scanner
+      sed -e "s|__APPDIR__|$PWD|g" deploy/com.memebot.plist \
+          > ~/Library/LaunchAgents/com.memebot.plist
+      launchctl load ~/Library/LaunchAgents/com.memebot.plist
+
+  Gỡ:
+      launchctl unload ~/Library/LaunchAgents/com.memebot.plist
+
+  LƯU Ý: launchd KHÔNG đọc file .env. Token phải khai trực tiếp trong
+  EnvironmentVariables bên dưới. Vì thế hãy đặt quyền cho file plist:
+      chmod 600 ~/Library/LaunchAgents/com.memebot.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.memebot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__APPDIR__/venv/bin/python</string>
+        <string>-u</string>
+        <string>__APPDIR__/runner.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__APPDIR__</string>
+
+    <!-- Chạy ngay khi load, và tự bật lại nếu chết -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- launchd gửi SIGTERM; runner bắt được và lưu state trước khi thoát -->
+    <key>ExitTimeOut</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>__APPDIR__/bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>__APPDIR__/bot.error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TELEGRAM_BOT_TOKEN</key>
+        <string></string>
+        <key>TELEGRAM_CHAT_ID</key>
+        <string></string>
+        <key>GITHUB_TOKEN</key>
+        <string></string>
+    </dict>
+
+    <!-- Ưu tiên thấp: bot không cần tranh CPU với việc bạn đang làm -->
+    <key>Nice</key>
+    <integer>5</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

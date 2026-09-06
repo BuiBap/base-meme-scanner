@@ -55,7 +55,7 @@ jobs:
           BLOCKSCOUT_API_KEY: ${{ secrets.BLOCKSCOUT_API_KEY }}
         run: python base_meme_bot.py        # chế độ mặc định = quét 1 lần rồi thoát
 
-      - name: Commit state (seen + csv)
+      - name: Commit state (seen + csv + paper trading)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -63,13 +63,14 @@ jobs:
           # chỉ add những file THỰC SỰ tồn tại (base_signals.csv có thể chưa được tạo
           # nếu lần quét này 0 tín hiệu đạt ngưỡng)
           FILES_TO_ADD=""
-          [ -f base_seen.json ] && FILES_TO_ADD="$FILES_TO_ADD base_seen.json"
-          [ -f base_signals.csv ] && FILES_TO_ADD="$FILES_TO_ADD base_signals.csv"
-          [ -f base_heartbeat.json ] && FILES_TO_ADD="$FILES_TO_ADD base_heartbeat.json"
+          for f in base_seen.json base_signals.csv base_heartbeat.json \
+                   paper_positions.json paper_trades.csv paper_state.json; do
+            [ -f "$f" ] && FILES_TO_ADD="$FILES_TO_ADD $f"
+          done
 
           if [ -n "$FILES_TO_ADD" ] && [ -n "$(git status --porcelain $FILES_TO_ADD)" ]; then
             git add $FILES_TO_ADD
-            git commit -m "state: cập nhật seen/signals [skip ci]"
+            git commit -m "state: cập nhật seen/signals/paper [skip ci]"
             git pull --rebase --autostash origin ${{ github.ref_name }} || true
             git push
           else

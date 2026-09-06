@@ -1,0 +1,58 @@
+[Unit]
+Description=Base Meme Scanner — bot quét memecoin + mô phỏng giao dịch
+Documentation=https://github.com/BuiBap/base-meme-scanner
+# Chỉ khởi động sau khi đã có mạng thật sự (không chỉ có interface).
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APPDIR__
+
+# Nạp biến môi trường (TELEGRAM_BOT_TOKEN, GITHUB_TOKEN...).
+# Dấu "-" nghĩa là thiếu file cũng không sao — bot vẫn chạy, chỉ không gửi Telegram.
+EnvironmentFile=-__APPDIR__/.env
+
+ExecStart=__APPDIR__/venv/bin/python -u __APPDIR__/runner.py
+
+# ---- Tự khởi động lại ----
+# always: khởi động lại kể cả khi thoát mã 0. Bot này không bao giờ nên tự dừng.
+Restart=always
+RestartSec=15
+# Nếu sập 5 lần trong 10 phút thì dừng hẳn — tránh vòng lặp restart vô hạn khi
+# lỗi là do cấu hình (thiếu file, sai token) chứ không phải do mạng chập chờn.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+# ---- Tắt êm ----
+# Runner bắt SIGTERM, lưu state rồi mới thoát. Cho nó thời gian làm việc đó.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+KillMode=mixed
+
+# ---- Log ----
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meme-bot
+
+# ---- Giới hạn tài nguyên ----
+# Bot chỉ ăn ~50MB. Đặt trần để một rò rỉ bộ nhớ không kéo sập cả VPS 1GB.
+MemoryMax=512M
+CPUQuota=50%
+
+# ---- Cách ly (bot chỉ cần đọc/ghi thư mục của chính nó) ----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__APPDIR__
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

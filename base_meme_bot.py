@@ -36,6 +36,13 @@ Chạy:
     python base_meme_bot.py                 # quét 1 lần
     python base_meme_bot.py --loop          # quét liên tục
     python base_meme_bot.py --min-score 60 --loop
+    python base_meme_bot.py --paper-report  # xem hiệu suất mô phỏng
+
+PAPER TRADING (paper_trader.py):
+    Mỗi tín hiệu được báo sẽ mở 1 vị thế ẢO $100 (có trừ slippage + phí + gas).
+    Mỗi lần quét sau đó, các vị thế mở được mark-to-market và chốt theo
+    TP +100% / SL -30% / trailing 25% từ đỉnh / timeout 24h.
+    Không có ví, không có private key, không giao dịch thật.
 """
 
 import argparse, csv, json, os, time
@@ -44,6 +51,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import requests
+
+# Ngân sách request tập trung (token bucket). Thiếu file này thì bot vẫn chạy,
+# chỉ lùi về cách giãn cách cứng như bản gốc.
+try:
+    import rate_limit
+except ImportError:
+    rate_limit = None
 
 # =========================================================================== #
 #  CẤU HÌNH — chỉnh đúng ngưỡng của anh ở đây
@@ -215,12 +229,25 @@ class TelegramNotifier:
 # =========================================================================== #
 
 class HttpClient:
-    def __init__(self, cfg: Config):
+    """Client HTTP dùng ngân sách request tập trung (rate_limit.GLOBAL).
+
+    Khi chạy 24/7 với nhiều nhịp quét, mọi phần của bot phải chia nhau CÙNG
+    một quota cho mỗi host. Token bucket cho phép bắn dồn khi cần (cập nhật
+    giá 40 vị thế) rồi tự nghỉ bù, thay vì giãn cứng 2.1s mỗi call.
+
+    Nếu thiếu rate_limit.py thì tự lùi về cách giãn cách cũ.
+    """
+
+    def __init__(self, cfg: Config, limiter=None, should_stop=None):
         self.cfg = cfg
         self.s = requests.Session()
         self.s.headers.update({"Accept": "application/json",
                                "User-Agent": "base-meme-bot/1.0 (+research)"})
-        self._last_call = {}  # host -> timestamp, để giãn cách
+        self._last_call = {}  # host -> timestamp (chỉ dùng khi không có limiter)
+        self.limiter = limiter or (rate_limit.GLOBAL if rate_limit else None)
+        # Hàm trả True khi tiến trình đang tắt. Cho phép bỏ dở chuỗi retry để
+        # shutdown không bị treo tới lúc systemd phải SIGKILL.
+        self.should_stop = should_stop
 
     def _throttle(self, host: str, min_interval: float):
         last = self._last_call.get(host, 0)
@@ -231,18 +258,36 @@ class HttpClient:
 
     def get(self, url: str, headers=None, min_interval: float = 0.0) -> Optional[dict]:
         host = url.split("/")[2]
-        if min_interval:
-            self._throttle(host, min_interval)
         delay = 1.0
         for attempt in range(1, self.cfg.max_retries + 1):
+            # Đang tắt thì bỏ dở, đừng bắt shutdown chờ hết chuỗi backoff.
+            if self.should_stop is not None and self.should_stop():
+                return None
+
+            # Xin quota TRƯỚC mỗi lần thử, kể cả lần retry — retry cũng là request.
+            if self.limiter is not None:
+                self.limiter.acquire(host)
+            elif min_interval:
+                self._throttle(host, min_interval)
+
             try:
                 r = self.s.get(url, headers=headers, timeout=self.cfg.request_timeout)
                 if r.status_code == 200:
                     return r.json()
                 if r.status_code == 429:
-                    w = delay * (2 ** (attempt - 1))
-                    print(f"    [429] {host} rate-limited, chờ {w:.0f}s")
-                    time.sleep(w); continue
+                    # Server bảo chậm lại -> tin server hơn phép tính cục bộ.
+                    retry_after = 0.0
+                    try:
+                        retry_after = float(r.headers.get("Retry-After", 0))
+                    except (TypeError, ValueError):
+                        pass
+                    w = max(retry_after, delay * (2 ** (attempt - 1)))
+                    print(f"    [429] {host} rate-limited, nghỉ {w:.0f}s")
+                    if self.limiter is not None:
+                        self.limiter.penalize(host, w)
+                    else:
+                        time.sleep(w)
+                    continue
                 if r.status_code in (401, 403):
                     return None  # thường là cần key -> bỏ qua
                 if 500 <= r.status_code < 600:
@@ -278,6 +323,53 @@ class GeckoTerminal:
         """Tối đa 300 trade gần nhất trong 24h, có volume_in_usd + kind (buy/sell) + timestamp."""
         d = self._get(f"/networks/{self.cfg.network}/pools/{pool_address}/trades")
         return (d or {}).get("data", []) if isinstance(d, dict) else []
+
+    def pool(self, pool_address: str) -> Optional[dict]:
+        d = self._get(f"/networks/{self.cfg.network}/pools/{pool_address}")
+        return (d or {}).get("data") if isinstance(d, dict) else None
+
+    def quotes_for_pools(self, pool_addresses: list) -> dict:
+        """Giá + thanh khoản hiện tại cho nhiều pool.
+
+        Dùng endpoint /pools/multi/{addresses} (tối đa 30 địa chỉ mỗi call) để
+        tiết kiệm rate-limit 30 req/phút. Nếu endpoint multi không trả dữ liệu
+        thì tự lùi về gọi từng pool một.
+
+        Trả: {pool_address_lower: {"price": float, "liquidity": float}}
+        Pool không có dữ liệu thì KHÔNG xuất hiện trong kết quả — bên gọi phải
+        coi đó là "chưa biết", không phải "giá = 0".
+        """
+        out: dict = {}
+        addrs = [a for a in dict.fromkeys(a.lower() for a in pool_addresses if a)]
+        if not addrs:
+            return out
+
+        def absorb(items):
+            for p in items or []:
+                a = (p or {}).get("attributes", {}) or {}
+                addr = str(a.get("address", "")).lower()
+                if not addr:
+                    continue
+                out[addr] = {
+                    "price": f(a.get("base_token_price_usd")),
+                    "liquidity": f(a.get("reserve_in_usd")),
+                }
+
+        for i in range(0, len(addrs), 30):
+            chunk = addrs[i:i + 30]
+            d = self._get(f"/networks/{self.cfg.network}/pools/multi/{','.join(chunk)}")
+            data = (d or {}).get("data") if isinstance(d, dict) else None
+            if isinstance(data, dict):
+                data = [data]
+            if data:
+                absorb(data)
+            else:
+                # fallback: multi không dùng được -> gọi lẻ (tốn call hơn)
+                for a in chunk:
+                    one = self.pool(a)
+                    if one:
+                        absorb([one])
+        return out
 
 
 # =========================================================================== #
@@ -541,6 +633,12 @@ try:
 except ImportError:
     free_sources = None
 
+# --- paper trading (mô phỏng giao dịch) ---
+try:
+    import paper_trader
+except ImportError:
+    paper_trader = None
+
 def hook_fresh_wallet_ratio(token_address: str, cfg: Config) -> Optional[float]:
     if free_sources is None:
         return None
@@ -631,7 +729,7 @@ def score_candidate(c: Candidate, cfg: Config):
 # =========================================================================== #
 
 class Scanner:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, paper_cfg: Optional["paper_trader.PaperConfig"] = None):
         self.cfg = cfg
         self.http = HttpClient(cfg)
         self.gt = GeckoTerminal(self.http, cfg)
@@ -639,6 +737,13 @@ class Scanner:
         self.tg = TelegramNotifier(cfg)
         self.seen = self._load_seen()
         self.last_heartbeat = self._load_heartbeat()
+
+        # ---- paper trading (mô phỏng giao dịch để đo hiệu suất) ----
+        self.paper = None
+        if paper_trader is not None:
+            pcfg = paper_cfg or paper_trader.PaperConfig()
+            if pcfg.enabled:
+                self.paper = paper_trader.PaperTrader(pcfg, notifier=self.tg)
 
     def _load_seen(self) -> set:
         if os.path.exists(self.cfg.seen_file):
@@ -681,9 +786,38 @@ class Scanner:
                 cands.append(c)
         return cands
 
-    def run_once(self) -> list[Candidate]:
+    def track_positions(self) -> list[dict]:
+        """NHỊP NHANH: chỉ cập nhật giá các vị thế ảo đang mở.
+
+        Tách riêng khỏi run_once() vì hai việc này có nhu cầu tần suất rất khác
+        nhau. Theo dõi vị thế rất RẺ (1 call cho mỗi 30 pool) nhưng cần DÀY để
+        TP/SL khớp sát ngưỡng. Quét token mới thì đắt hơn và không cần dày.
+        Chạy riêng nhịp này mỗi 30-60s là cách chính xác hoá paper trading mà
+        gần như không tốn thêm quota.
+        """
+        if self.paper is None:
+            return []
+        closed = self.paper.mark_to_market(self.gt.quotes_for_pools)
+        u = self.paper.unrealized()
+        if closed or u["open_count"]:
+            print(f"  [paper] đang mở {u['open_count']} · tạm tính {u['pnl_pct']:+.1f}% "
+                  f"· vừa đóng {len(closed)} lệnh")
+        return closed
+
+    def run_once(self, track: bool = True) -> list[Candidate]:
+        """NHỊP CHẬM: khám phá token mới + chấm điểm + báo.
+
+        track=False khi runner đã lo nhịp theo dõi vị thế riêng, để không
+        mark-to-market hai lần liên tiếp.
+        """
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         print(f"\n=== BASE scan {stamp} ===")
+
+        # Cập nhật vị thế ảo TRƯỚC khi quét mới: nếu discovery lỗi thì việc
+        # theo dõi lệnh cũ vẫn chạy.
+        if track:
+            self.track_positions()
+
         cands = self.discover()
         print(f"  Khám phá: {len(cands)} pool")
 
@@ -745,6 +879,11 @@ class Scanner:
                     self.tg.send(f"⚪ Không có tín hiệu ở BASE đạt ngưỡng lúc {stamp}")
                     self.last_heartbeat = time.time()
                     self._save_heartbeat()
+
+        # Mở vị thế ảo cho đúng những tín hiệu đã báo, rồi tổng kết định kỳ.
+        if self.paper is not None:
+            self.paper.open_from_signals(to_send)
+            self.paper.maybe_daily_report()
         return to_send
 
     def _print(self, c: Candidate):
@@ -783,9 +922,43 @@ def main():
     ap.add_argument("--min-score", type=float)
     ap.add_argument("--pages", type=int, help="số trang new_pools để quét")
     ap.add_argument("--test-telegram", action="store_true", help="gửi 1 tin thử rồi thoát")
+    # --- paper trading ---
+    ap.add_argument("--paper-report", action="store_true",
+                    help="in báo cáo hiệu suất mô phỏng rồi thoát")
+    ap.add_argument("--paper-report-telegram", action="store_true",
+                    help="gửi báo cáo hiệu suất qua Telegram ngay rồi thoát")
+    ap.add_argument("--no-paper", action="store_true",
+                    help="tắt mô phỏng giao dịch cho lần chạy này")
+    ap.add_argument("--paper-size", type=float,
+                    help="size mỗi lệnh ảo, USD (mặc định 100)")
     args = ap.parse_args()
 
     cfg = Config()
+
+    paper_cfg = None
+    if paper_trader is not None:
+        paper_cfg = paper_trader.PaperConfig()
+        if args.no_paper:
+            paper_cfg.enabled = False
+        if args.paper_size:
+            paper_cfg.position_size_usd = args.paper_size
+
+    if args.paper_report:
+        if paper_trader is None:
+            print("Thiếu file paper_trader.py.")
+            return
+        paper_trader.print_report(paper_trader.load_trades(paper_cfg.trades_csv), paper_cfg)
+        return
+
+    if args.paper_report_telegram:
+        if paper_trader is None:
+            print("Thiếu file paper_trader.py.")
+            return
+        pt = paper_trader.PaperTrader(paper_cfg, notifier=TelegramNotifier(cfg))
+        text = pt.telegram_report_text()
+        ok = pt.tg.send(text)
+        print("Gửi báo cáo:", "OK ✅" if ok else "THẤT BẠI ❌")
+        return
 
     if args.test_telegram:
         tg = TelegramNotifier(cfg)
@@ -797,7 +970,7 @@ def main():
     if args.min_score is not None: cfg.min_score_to_alert = args.min_score
     if args.pages: cfg.discovery_pages = args.pages
 
-    sc = Scanner(cfg)
+    sc = Scanner(cfg, paper_cfg)
     if args.loop:
         print(f"Loop mỗi {cfg.interval_seconds}s. Ctrl+C để dừng.")
         try:
