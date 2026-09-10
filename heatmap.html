@@ -1,0 +1,287 @@
+<!doctype html><html lang='vi'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Bản Đồ Nhiệt Meme 18 Chain</title>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f6f6f4;--surface:#ffffff;--surface-2:#eeeff1;--surface-3:#f9f9f8;
+  --ink:#14161b;--muted:#5f6773;--line:#e0e2e7;--accent:#1f6feb;
+  --cold:#5b8dc4;--cool:#4a9b8e;--warm:#d98f2b;--hot:#d1452f;
+  --good:#16794a;--bad:#c33f2a;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d0f13;--surface:#161920;--surface-2:#1e222a;--surface-3:#12151b;
+  --ink:#e9ebef;--muted:#8b93a1;--line:#252932;--accent:#5aa2ff;
+  --cold:#6f9fd4;--cool:#4fb3a2;--warm:#e8a743;--hot:#e8604a;
+  --good:#4dc98d;--bad:#e8604a;
+}}
+:root[data-theme="dark"]{
+  --bg:#0d0f13;--surface:#161920;--surface-2:#1e222a;--surface-3:#12151b;
+  --ink:#e9ebef;--muted:#8b93a1;--line:#252932;--accent:#5aa2ff;
+  --cold:#6f9fd4;--cool:#4fb3a2;--warm:#e8a743;--hot:#e8604a;
+  --good:#4dc98d;--bad:#e8604a;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",-apple-system,sans-serif;
+  font-size:15px;line-height:1.6;padding:0 20px 80px}
+.wrap{max-width:980px;margin:0 auto}
+h1,h2,h3{font-family:"Chivo",-apple-system,sans-serif;text-wrap:balance;margin:0}
+.mono,.n,td.n,th.n{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+header{padding:46px 0 28px;border-bottom:2px solid var(--ink)}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:13px}
+h1{font-size:clamp(29px,5vw,45px);font-weight:900;letter-spacing:-.025em;line-height:1.03}
+.sub{color:var(--muted);margin-top:12px;max-width:64ch}
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-top:28px}
+.vc{background:var(--surface);padding:17px 19px}
+.vc .k{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+.vc .v{font-size:21px;font-weight:700;font-family:"Chivo",sans-serif;margin-top:5px;letter-spacing:-.01em}
+.vc .h{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.45}
+section{margin-top:50px}
+.shead{display:flex;align-items:baseline;gap:13px;padding-bottom:11px;
+  border-bottom:1px solid var(--line);margin-bottom:20px}
+.shead .idx{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--accent)}
+.shead h2{font-size:21px;font-weight:700;letter-spacing:-.015em}
+.shead .note{margin-left:auto;font-size:12px;color:var(--muted);font-family:"IBM Plex Mono",monospace}
+.rank{display:flex;flex-direction:column;gap:2px}
+.rk{display:grid;grid-template-columns:26px 140px 1fr 66px;align-items:center;gap:11px;
+  padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:5px}
+.rk .p{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);text-align:right}
+.rk .nm{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rk .track{height:19px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.rk .fill{height:100%;border-radius:3px}
+.rk .sc{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;text-align:right}
+.f-hot{background:linear-gradient(90deg,var(--warm),var(--hot))}
+.f-warm{background:linear-gradient(90deg,var(--cool),var(--warm))}
+.f-cool{background:var(--cool)}
+.f-cold{background:var(--cold);opacity:.55}
+.lab{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.07em;
+  text-transform:uppercase;padding:2px 7px;border-radius:3px;font-weight:600}
+.l-hot{background:color-mix(in srgb,var(--hot) 16%,transparent);color:var(--hot)}
+.l-warm{background:color-mix(in srgb,var(--warm) 18%,transparent);color:var(--warm)}
+.l-cool{background:color-mix(in srgb,var(--cool) 16%,transparent);color:var(--cool)}
+.l-cold{background:var(--surface-2);color:var(--muted)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:13px}
+th{text-align:left;padding:10px 11px;font-family:"IBM Plex Mono",monospace;font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;
+  border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+th.n,td.n{text-align:right}
+td{padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td.sym{font-weight:600;font-family:"IBM Plex Mono",monospace}
+tr.hi{background:color-mix(in srgb,var(--hot) 7%,transparent)}
+tr.dim td{color:var(--muted)}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.movers{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.mv{border:1px solid var(--line);border-radius:7px;background:var(--surface);overflow:hidden}
+.mv .h{padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--line);
+  display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.mv .h .nm{font-family:"Chivo",sans-serif;font-weight:700;font-size:15px}
+.mv .h .st{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted)}
+.mv ul{list-style:none;margin:0;padding:6px 0}
+.mv li{padding:7px 16px;display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px;
+  border-bottom:1px solid var(--line)}
+.mv li:last-child{border-bottom:none}
+.mv .tk{font-family:"IBM Plex Mono",monospace;font-weight:500}
+.mv .meta{font-size:11px;color:var(--muted);font-family:"IBM Plex Mono",monospace;grid-column:1/-1;margin-top:1px}
+.mv .ch{font-family:"IBM Plex Mono",monospace;font-weight:600;font-variant-numeric:tabular-nums}
+.callout{background:var(--surface-3);border:1px solid var(--line);border-left:3px solid var(--accent);
+  padding:17px 20px;border-radius:0 6px 6px 0;margin:20px 0}
+.callout.warn{border-left-color:var(--warm)}
+.callout.bad{border-left-color:var(--hot)}
+.callout h3{font-size:16px;font-weight:700;margin-bottom:7px;font-family:"Chivo",sans-serif}
+.callout p{margin:0 0 9px;font-size:14.5px}.callout p:last-child{margin-bottom:0}
+ul.plain{margin:12px 0;padding-left:19px}
+ul.plain li{margin-bottom:8px}
+ul.plain li::marker{color:var(--accent)}
+footer{margin-top:56px;padding-top:19px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted);font-family:"IBM Plex Mono",monospace;line-height:1.7}
+</style>
+
+</head><body>
+<div class='wrap'>
+<header>
+  <div class='eyebrow'>GeckoTerminal · 18 mạng lưới · 10-09-2026 13:49 UTC</div>
+  <h1>Bản Đồ Nhiệt Meme 18 Chain</h1>
+  <p class='sub'>Quét top 20 pool trending mỗi mạng lưới, lọc bỏ cặp stablecoin và wrapped, xếp hạng theo dòng tiền thực chảy qua pool meme.</p>
+
+  <div class="verdict">
+    <div class="vc"><div class="k">Nóng nhất</div>
+      <div class="v" style="color:var(--hot)">BNB Chain</div>
+      <div class="h">$504.8M volume trên $14.3M thanh khoản — vòng quay 35.4 lần</div>
+    </div>
+    <div class="vc"><div class="k">Nhiều token mới nhất</div>
+      <div class="v" style="color:var(--warm)">Robinhood</div>
+      <div class="h">6/20 pool dưới 48h, 5 token vượt +100%</div>
+    </div>
+    <div class="vc"><div class="k">Đang lạnh</div>
+      <div class="v" style="color:var(--cold)">Tron</div>
+      <div class="h">trung vị -0.0%, 0 token vượt +100%, điểm nhiệt 0.01</div>
+    </div>
+    <div class="vc"><div class="k">Bối cảnh chung</div>
+      <div class="v">Sóng đang gãy</div>
+      <div class="h">18/18 chain có trung vị h24 âm</div>
+    </div>
+  </div>
+</header>
+<section>
+  <div class='shead'><span class='idx'>01</span><h2>Xếp hạng độ nóng</h2><span class='note'>điểm = vòng quay × token bùng nổ × pool mới</span></div>
+<div class="rank">
+    <div class="rk"><span class="p">1</span><span class="nm">BNB Chain <span class="lab l-hot">rất nóng</span></span><span class="track"><span class="fill f-hot" style="width:100.0%"></span></span><span class="sc">82.88</span></div>
+    <div class="rk"><span class="p">2</span><span class="nm">Robinhood <span class="lab l-hot">rất nóng</span></span><span class="track"><span class="fill f-hot" style="width:73.7%"></span></span><span class="sc">61.07</span></div>
+    <div class="rk"><span class="p">3</span><span class="nm">Solana <span class="lab l-warm">nóng</span></span><span class="track"><span class="fill f-warm" style="width:13.9%"></span></span><span class="sc">11.53</span></div>
+    <div class="rk"><span class="p">4</span><span class="nm">Monad <span class="lab l-cool">ấm</span></span><span class="track"><span class="fill f-cool" style="width:2.1%"></span></span><span class="sc">1.71</span></div>
+    <div class="rk"><span class="p">5</span><span class="nm">Avalanche <span class="lab l-cool">ấm</span></span><span class="track"><span class="fill f-cool" style="width:2.0%"></span></span><span class="sc">1.65</span></div>
+    <div class="rk"><span class="p">6</span><span class="nm">Base <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:1.1%"></span></span><span class="sc">0.95</span></div>
+    <div class="rk"><span class="p">7</span><span class="nm">Sui <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:1.1%"></span></span><span class="sc">0.93</span></div>
+    <div class="rk"><span class="p">8</span><span class="nm">Sei <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:1.0%"></span></span><span class="sc">0.8</span></div>
+    <div class="rk"><span class="p">9</span><span class="nm">Arbitrum <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.8%"></span></span><span class="sc">0.64</span></div>
+    <div class="rk"><span class="p">10</span><span class="nm">Polygon <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.5%"></span></span><span class="sc">0.42</span></div>
+    <div class="rk"><span class="p">11</span><span class="nm">HyperEVM <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.4%"></span></span><span class="sc">0.33</span></div>
+    <div class="rk"><span class="p">12</span><span class="nm">Ethereum <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.2%"></span></span><span class="sc">0.18</span></div>
+    <div class="rk"><span class="p">13</span><span class="nm">Berachain <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.2%"></span></span><span class="sc">0.15</span></div>
+    <div class="rk"><span class="p">14</span><span class="nm">Sonic <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.2%"></span></span><span class="sc">0.14</span></div>
+    <div class="rk"><span class="p">15</span><span class="nm">Plasma <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.1%"></span></span><span class="sc">0.09</span></div>
+    <div class="rk"><span class="p">16</span><span class="nm">Abstract <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.0%"></span></span><span class="sc">0.03</span></div>
+    <div class="rk"><span class="p">17</span><span class="nm">Unichain <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.0%"></span></span><span class="sc">0.02</span></div>
+    <div class="rk"><span class="p">18</span><span class="nm">Tron <span class="lab l-cold">nguội</span></span><span class="track"><span class="fill f-cold" style="width:0.0%"></span></span><span class="sc">0.01</span></div>
+  </div>
+</section>
+<section>
+  <div class='shead'><span class='idx'>02</span><h2>Số liệu đầy đủ</h2><span class='note'>chỉ tính pool meme, đã lọc cặp hạ tầng</span></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>Chain</th><th class="n">Pool meme</th><th class="n">Thanh khoản</th>
+        <th class="n">Volume 24h</th><th class="n">LP trung vị</th>
+        <th class="n">Vòng quay</th><th class="n">h24 trung vị</th>
+        <th class="n">&gt;100%</th><th class="n">&lt;48h</th>
+      </tr></thead>
+      <tbody>
+<tr class="hi"><td class="sym">BNB Chain</td><td class="n">17/20</td><td class="n">$14.3M</td><td class="n">$504.8M</td><td class="n">$591k</td><td class="n">35.42×</td><td class="n neg">-5.6%</td><td class="n">2</td><td class="n">2</td></tr>
+<tr class="hi"><td class="sym">Robinhood</td><td class="n">20/20</td><td class="n">$72.6M</td><td class="n">$778.2M</td><td class="n">$966k</td><td class="n">10.71×</td><td class="n neg">-10.6%</td><td class="n">5</td><td class="n">6</td></tr>
+<tr class="hi"><td class="sym">Solana</td><td class="n">19/20</td><td class="n">$41.5M</td><td class="n">$195.5M</td><td class="n">$504k</td><td class="n">4.71×</td><td class="n neg">-15.9%</td><td class="n">1</td><td class="n">5</td></tr>
+<tr class=""><td class="sym">Monad</td><td class="n">9/20</td><td class="n">$5.4M</td><td class="n">$9.2M</td><td class="n">$102k</td><td class="n">1.71×</td><td class="n neg">-3.4%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class=""><td class="sym">Avalanche</td><td class="n">7/20</td><td class="n">$5.7M</td><td class="n">$9.5M</td><td class="n">$213k</td><td class="n">1.65×</td><td class="n neg">-3.0%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Base</td><td class="n">19/20</td><td class="n">$66.7M</td><td class="n">$55.3M</td><td class="n">$1.2M</td><td class="n">0.83×</td><td class="n neg">-15.8%</td><td class="n">0</td><td class="n">1</td></tr>
+<tr class="dim"><td class="sym">Sui</td><td class="n">16/20</td><td class="n">$10.4M</td><td class="n">$9.6M</td><td class="n">$316k</td><td class="n">0.93×</td><td class="n neg">-7.6%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Sei</td><td class="n">10/20</td><td class="n">$3.7M</td><td class="n">$2.9M</td><td class="n">$63k</td><td class="n">0.80×</td><td class="n neg">-0.7%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Arbitrum</td><td class="n">5/20</td><td class="n">$4.6M</td><td class="n">$3.0M</td><td class="n">$1.0M</td><td class="n">0.64×</td><td class="n neg">-6.4%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Polygon</td><td class="n">9/20</td><td class="n">$21.5M</td><td class="n">$9.0M</td><td class="n">$777k</td><td class="n">0.42×</td><td class="n neg">-2.7%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">HyperEVM</td><td class="n">15/20</td><td class="n">$150.9M</td><td class="n">$50.2M</td><td class="n">$473k</td><td class="n">0.33×</td><td class="n neg">-8.4%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Ethereum</td><td class="n">12/20</td><td class="n">$47.0M</td><td class="n">$6.0M</td><td class="n">$715k</td><td class="n">0.13×</td><td class="n neg">-7.8%</td><td class="n">1</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Berachain</td><td class="n">13/20</td><td class="n">$2.8M</td><td class="n">$422k</td><td class="n">$149k</td><td class="n">0.15×</td><td class="n neg">-0.4%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Sonic</td><td class="n">9/20</td><td class="n">$423k</td><td class="n">$58k</td><td class="n">$32k</td><td class="n">0.14×</td><td class="n neg">-9.2%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Plasma</td><td class="n">13/20</td><td class="n">$53.6M</td><td class="n">$5.0M</td><td class="n">$42k</td><td class="n">0.09×</td><td class="n neg">-0.2%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Abstract</td><td class="n">9/20</td><td class="n">$2.2M</td><td class="n">$69k</td><td class="n">$85k</td><td class="n">0.03×</td><td class="n neg">-3.6%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Unichain</td><td class="n">4/20</td><td class="n">$17.6M</td><td class="n">$279k</td><td class="n">$37k</td><td class="n">0.02×</td><td class="n neg">-0.2%</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="dim"><td class="sym">Tron</td><td class="n">12/20</td><td class="n">$120.4M</td><td class="n">$888k</td><td class="n">$2.4M</td><td class="n">0.01×</td><td class="n neg">-0.0%</td><td class="n">0</td><td class="n">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-top:11px">
+    <strong>Vòng quay</strong> = volume 24h chia thanh khoản. Đây là chỉ số quan trọng nhất:
+    nó đo tiền thật sự chảy qua pool chứ không phải vốn nằm chết.
+  </p>
+</section>
+<section>
+  <div class='shead'><span class='idx'>03</span><h2>Token đang kéo sóng</h2><span class='note'>3 chain nóng nhất + Base để đối chiếu</span></div>
+  <div class="movers">
+  <div class="mv">
+    <div class="h">
+      <span class="nm">BNB Chain</span>
+      <span class="lab l-hot">35.4× vòng quay</span>
+      <span class="st">$504.8M</span>
+    </div>
+    <ul>
+    <li><span class="tk">VC</span><span class="ch" style="color:var(--hot)">+5694.0%</span><span class="meta">21h tuổi · LP $179k · vol $8.4M · h1 -16.7%</span></li>
+    <li><span class="tk">UPONLY</span><span class="ch" style="color:var(--hot)">+2195.7%</span><span class="meta">8h tuổi · LP $99k · vol $14.5M · h1 -50.3%</span></li>
+    <li><span class="tk">BREW</span><span class="ch" style="color:var(--warm)">+52.5%</span><span class="meta">4d 11h tuổi · LP $740k · vol $7.0M · h1 -4.5%</span></li>
+    <li><span class="tk">DEBIT</span><span class="ch" >+28.8%</span><span class="meta">17d tuổi · LP $2.5M · vol $192.5M · h1 +0.7%</span></li>
+    </ul>
+  </div>
+  <div class="mv">
+    <div class="h">
+      <span class="nm">Robinhood</span>
+      <span class="lab l-hot">10.7× vòng quay</span>
+      <span class="st">$778.2M</span>
+    </div>
+    <ul>
+    <li><span class="tk">ND4</span><span class="ch" style="color:var(--hot)">+2860.3%</span><span class="meta">22h tuổi · LP $101k · vol $9.9M · h1 +8.5%</span></li>
+    <li><span class="tk">KERMIT</span><span class="ch" style="color:var(--hot)">+1176.0%</span><span class="meta">17h tuổi · LP $57k · vol $1.1M · h1 -13.0%</span></li>
+    <li><span class="tk">SIH</span><span class="ch" style="color:var(--hot)">+791.3%</span><span class="meta">15h tuổi · LP $59k · vol $601k · h1 +3.4%</span></li>
+    <li><span class="tk">JUGGERNAUT</span><span class="ch" style="color:var(--hot)">+447.1%</span><span class="meta">73d tuổi · LP $891k · vol $19.8M · h1 -20.5%</span></li>
+    </ul>
+  </div>
+  <div class="mv">
+    <div class="h">
+      <span class="nm">Solana</span>
+      <span class="lab l-warm">4.7× vòng quay</span>
+      <span class="st">$195.5M</span>
+    </div>
+    <ul>
+    <li><span class="tk">EMBER</span><span class="ch" style="color:var(--hot)">+1685.8%</span><span class="meta">15h tuổi · LP $198k · vol $8.7M · h1 -5.6%</span></li>
+    <li><span class="tk">CATE</span><span class="ch" >+23.1%</span><span class="meta">46d tuổi · LP $2.4M · vol $17.7M · h1 +2.1%</span></li>
+    <li><span class="tk">PURR</span><span class="ch" >+11.8%</span><span class="meta">22d tuổi · LP $504k · vol $3.8M · h1 -1.4%</span></li>
+    <li><span class="tk">SOLCEX</span><span class="ch" >+8.9%</span><span class="meta">? tuổi · LP $379k · vol $313k · h1 -4.3%</span></li>
+    </ul>
+  </div>
+  <div class="mv">
+    <div class="h">
+      <span class="nm">Base</span>
+      <span class="lab l-cold">1 pool mới</span>
+      <span class="st">$55.3M</span>
+    </div>
+    <ul>
+    <li><span class="tk">CLAWBANK</span><span class="ch" >+5.9%</span><span class="meta">213d tuổi · LP $1.6M · vol $66k · h1 -3.2%</span></li>
+    <li><span class="tk">DRB</span><span class="ch" >+0.4%</span><span class="meta">? tuổi · LP $1.5M · vol $1.1M · h1 -4.5%</span></li>
+    <li><span class="tk">BLUECHIP</span><span class="ch" >-0.6%</span><span class="meta">21d tuổi · LP $510k · vol $3.1M · h1 +4.3%</span></li>
+    <li><span class="tk">AERO</span><span class="ch" >-4.9%</span><span class="meta">? tuổi · LP $32.2M · vol $3.2M · h1 -0.1%</span></li>
+    </ul>
+  </div>
+  </div>
+</section>
+<section>
+  <div class='shead'><span class='idx'>04</span><h2>Đọc bảng này thế nào</h2></div>
+  <div class="callout bad">
+    <h3>Toàn thị trường meme đang trong giai đoạn giảm</h3>
+    <p>18/18 chain có trung vị h24 âm. Hầu hết token trending thực ra đang giảm — chỉ vài token bùng nổ kéo con số trung bình lên. Đây là đặc trưng của <strong>cuối sóng hoặc thị trường yếu</strong>.</p>
+    <p>Bot paper trader sẽ ít tín hiệu đạt ngưỡng điểm số và tỉ lệ thắng có khả năng thấp hơn bình thường trong giai đoạn này.</p>
+  </div>
+  <div class="callout">
+    <h3>BNB Chain dẫn đầu với điểm 82.88</h3>
+    <p>Vòng quay 35.4× trên $14.3M thanh khoản, 2 token vượt +100%, 2 pool dưới 48h. LP trung vị $591k — token bùng nổ: VC, UPONLY, BREW.</p>
+  </div>
+  <div class="callout warn">
+    <h3>Tron đang lạnh nhất (0.01 điểm)</h3>
+    <p>Trung vị h24 -0.0%, 0 token vượt +100%, 0 pool dưới 48h. Vòng quay chỉ 0.01× — tín hiệu meme thưa thớt trên chain này.</p>
+  </div>
+  <div class="callout">
+    <h3>Robinhood vs Base — hai hướng khác nhau</h3>
+    <p>Robinhood: 6 pool mới trong 48h, LP trung vị $966k — nhiều cơ hội bắt momentum sớm nhưng thanh khoản mỏng, trượt giá cao hơn.
+    Base: LP trung vị $1.2M, 0 token +100% — thanh khoản sâu hơn nhưng ít tín hiệu mới.</p>
+  </div>
+</section>
+<section>
+  <div class="shead"><span class="idx">05</span><h2>Cách tự động hoá việc quét</h2></div>
+  <p>Toàn bộ bảng trên dựng từ <strong>một endpoint duy nhất</strong>, không cần khoá API:</p>
+  <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:13px 16px;margin:14px 0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;overflow-x:auto;white-space:pre">GET api.geckoterminal.com/api/v2/networks/{slug}/trending_pools</div>
+  <ul class="plain">
+    <li><strong>Giới hạn gọi</strong> — 18 chain cần giãn cách 8 giây mỗi lượt, tổng khoảng 2.5 phút. Gọi dồn sẽ bị chặn.</li>
+    <li><strong>Lọc cặp hạ tầng</strong> — bắt buộc. Nếu không lọc, Tron sẽ đứng đầu thanh khoản còn Arbitrum trông như đang có sóng.</li>
+    <li><strong>Vòng quay là chỉ số dẫn</strong> — không phải thanh khoản tuyệt đối, cũng không phải h24 trung bình. Dùng trung vị để đo bề rộng.</li>
+    <li><strong>Nhịp quét</strong> — 12 giờ/lần (7h sáng và 7h tối). Sóng meme chuyển chain theo ngày.</li>
+  </ul>
+</section>
+<footer>
+  Nguồn: GeckoTerminal API v2, endpoint trending_pools, top 20 pool mỗi mạng lưới · chụp 10-09-2026 13:49 UTC<br>
+  Bộ lọc cặp hạ tầng loại token gốc thuộc nhóm stablecoin, wrapped native và bluechip · Vòng quay = volume 24h ÷ thanh khoản pool<br>
+  Tự động cập nhật 2 lần/ngày lúc 7:00 và 19:00 (UTC+7)
+</footer>
+</div></body></html>
