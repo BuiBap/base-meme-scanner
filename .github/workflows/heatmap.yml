@@ -1,0 +1,33 @@
+name: Meme Heatmap
+
+on:
+  schedule:
+    # 0h UTC = 7h sáng Việt Nam (UTC+7)
+    - cron: "0 0 * * *"
+    # 12h UTC = 19h tối Việt Nam
+    - cron: "0 12 * * *"
+  workflow_dispatch:  # Chạy thủ công từ GitHub UI
+
+jobs:
+  heatmap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run heatmap scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.HEATMAP_GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python meme_heatmap.py
