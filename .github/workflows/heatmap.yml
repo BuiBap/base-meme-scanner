@@ -8,6 +8,9 @@ on:
     - cron: "0 12 * * *"
   workflow_dispatch:  # Chạy thủ công từ GitHub UI
 
+permissions:
+  contents: write  # cho phép push lên gh-pages
+
 jobs:
   heatmap:
     runs-on: ubuntu-latest
@@ -27,7 +30,7 @@ jobs:
 
       - name: Run heatmap scanner
         env:
-          GITHUB_TOKEN: ${{ secrets.HEATMAP_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python meme_heatmap.py
