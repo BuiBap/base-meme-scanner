@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-meme_heatmap.py — Bản đồ nhiệt meme 18 chain
+meme_signal_bot.py — Bản đồ nhiệt meme đa chain (tự động mở rộng)
 
-Quét GeckoTerminal trending_pools, lọc cặp hạ tầng, xếp hạng theo điểm nhiệt,
-tạo HTML và đẩy lên GitHub Pages, báo Telegram.
+Quét GeckoTerminal trending_pools cho các chain đã biết + tự động khám phá
+chain mới. Chain lạ xuất hiện >= 3 lần được tự động thêm vào danh sách cố định.
 
-Chạy thủ công:  python meme_heatmap.py
-Test không push: python meme_heatmap.py --dry
-Cron Oracle VM:  0 7,19 * * * cd /home/opc/base-paper-trader && /home/opc/base-paper-trader/venv/bin/python3 meme_heatmap.py >> /home/opc/base-paper-trader/heatmap.log 2>&1
+Chạy thủ công:   python meme_signal_bot.py
+Test không push: python meme_signal_bot.py --dry
 """
 
 import os, sys, time, json, math, base64, datetime, statistics, argparse
@@ -22,7 +21,7 @@ try:
 except ImportError:
     _USE_REQUESTS = False
 
-# ─── Chains ───────────────────────────────────────────────────────────────────
+# ─── Chains cố định ────────────────────────────────────────────────────────────
 
 CHAINS = [
     ("bsc",           "BNB Chain"),
@@ -55,19 +54,24 @@ INFRA_SYMBOLS = {
     "STETH","WSTETH","RETH","CBETH","FRXETH","SFRXETH","WEETH","SWETH",
     "CAKE","UNI","AAVE","COMP","MKR","SNX","CRV","LDO","BTCB",
     "LINK","ARB","OP","SHIB",
-    # HyperEVM wrapped assets
     "HYPE","UBTC","UETH","USOL","UBNB","UAVAX","UMATIC","UATOM",
 }
 
 GT_BASE    = "https://api.geckoterminal.com/api/v2"
-GT_GAP     = 12     # seconds between API calls (rate limit)
-NEW_HOURS  = 48     # pool "new" threshold
+GT_GAP     = 12     # giây giữa các API call
+NEW_HOURS  = 48
 
-GITHUB_REPO   = "BuiBap/base-meme-scanner"
-GITHUB_BRANCH = "gh-pages"
-GITHUB_FILE   = "heatmap.html"
+GITHUB_REPO       = "BuiBap/base-meme-scanner"
+GITHUB_BRANCH     = "gh-pages"
+GITHUB_FILE       = "heatmap.html"
+CANDIDATES_FILE   = "candidates.json"
 
-# ─── Env ──────────────────────────────────────────────────────────────────────
+# Auto-discovery settings
+MAX_DISCOVER      = 5    # số chain lạ thử tối đa mỗi lần chạy
+MIN_MEME_POOLS    = 3    # cần >= N pool meme mới tính là chain hoạt động
+PROMOTE_THRESHOLD = 3    # xuất hiện >= N lần → tự động vào danh sách
+
+# ─── Env ───────────────────────────────────────────────────────────────────────
 
 def load_dotenv(path: str = ".env"):
     try:
@@ -81,13 +85,13 @@ def load_dotenv(path: str = ".env"):
     except FileNotFoundError:
         pass
 
-# ─── Data classes ─────────────────────────────────────────────────────────────
+# ─── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass
 class PoolInfo:
     symbol:    str
     age_hours: float
-    lp_usd:   float
+    lp_usd:    float
     vol_24h:   float
     h24_pct:   float
     h1_pct:    float
@@ -108,11 +112,12 @@ class ChainStats:
     heat_score:  float = 0.0
     pools:       list  = field(default_factory=list)
     error:       Optional[str] = None
+    is_new:      bool  = False   # True nếu là chain mới khám phá lần này
 
-# ─── GeckoTerminal fetch ──────────────────────────────────────────────────────
+# ─── HTTP helper ───────────────────────────────────────────────────────────────
 
 def _http_get(url: str) -> dict:
-    headers = {"Accept": "application/json", "User-Agent": "meme-heatmap/1.0"}
+    headers = {"Accept": "application/json", "User-Agent": "meme-signal-bot/2.0"}
     if _USE_REQUESTS:
         for attempt in range(4):
             r = _requests.get(url, headers=headers, timeout=20)
@@ -123,10 +128,16 @@ def _http_get(url: str) -> dict:
                 continue
             r.raise_for_status()
             return r.json()
-        r.raise_for_status()  # raise after all retries
+        r.raise_for_status()
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read())
+
+def _http_get_silent(url: str) -> Optional[dict]:
+    try:
+        return _http_get(url)
+    except Exception:
+        return None
 
 def _token_map(included: list) -> dict:
     m = {}
@@ -149,8 +160,10 @@ def _age_hours(created_at: str) -> float:
     except Exception:
         return 9999.0
 
-def fetch_chain(slug: str, name: str) -> ChainStats:
-    stats = ChainStats(slug=slug, name=name)
+# ─── GeckoTerminal fetch ───────────────────────────────────────────────────────
+
+def fetch_chain(slug: str, name: str, is_new: bool = False) -> ChainStats:
+    stats = ChainStats(slug=slug, name=name, is_new=is_new)
     url = f"{GT_BASE}/networks/{slug}/trending_pools?include=base_token,quote_token&page=1"
     try:
         data = _http_get(url)
@@ -174,7 +187,6 @@ def fetch_chain(slug: str, name: str) -> ChainStats:
 
         try:
             reserve = attrs.get("reserve_in_usd")
-            # HyperEVM (order-book DEX) has no reserve — use market_cap as rough proxy
             if reserve is None:
                 mc = float(attrs.get("market_cap_usd") or attrs.get("fdv_usd") or 0)
                 lp = mc * 0.03 if mc > 0 else 0
@@ -209,19 +221,20 @@ def fetch_chain(slug: str, name: str) -> ChainStats:
     stats.blast_count = sum(1 for p in pools if p.h24_pct > 100)
     stats.new_count   = sum(1 for p in pools if p.age_hours < NEW_HOURS)
 
-    # điểm = vòng quay × bonus bùng nổ × bonus pool mới
     stats.heat_score = round(
         stats.turnover * (1 + stats.blast_count * 0.4) * (1 + stats.new_count * 0.15),
         2
     )
     return stats
 
-def scan_all_chains() -> list:
+def scan_chains(chain_list: list) -> list:
     results = []
-    n = len(CHAINS)
-    for i, (slug, name) in enumerate(CHAINS):
-        print(f"  [{i+1}/{n}] {name} ...", end=" ", flush=True)
-        s = fetch_chain(slug, name)
+    n = len(chain_list)
+    for i, (slug, name, *rest) in enumerate(chain_list):
+        is_new = bool(rest and rest[0])
+        label  = f"🆕 {name}" if is_new else name
+        print(f"  [{i+1}/{n}] {label} ...", end=" ", flush=True)
+        s = fetch_chain(slug, name, is_new=is_new)
         if s.error:
             print(f"LỖI: {s.error}")
         else:
@@ -231,7 +244,161 @@ def scan_all_chains() -> list:
             time.sleep(GT_GAP)
     return results
 
-# ─── Formatters ───────────────────────────────────────────────────────────────
+# ─── Auto-discovery ────────────────────────────────────────────────────────────
+
+def fetch_all_networks() -> list:
+    """Trả về list (slug, name) từ GeckoTerminal (~150+ chain)."""
+    networks = []
+    for page in range(1, 8):  # tối đa 7 trang (~175 chain)
+        data = _http_get_silent(f"{GT_BASE}/networks?page={page}")
+        if not data:
+            break
+        items = data.get("data", [])
+        if not items:
+            break
+        for item in items:
+            slug = item.get("id", "")
+            name = (item.get("attributes") or {}).get("name", slug)
+            if slug:
+                networks.append((slug, name))
+        time.sleep(2)  # nhẹ nhàng, không cần GT_GAP đầy đủ
+    return networks
+
+
+def load_candidates(token: str) -> dict:
+    """Đọc candidates.json từ gh-pages. Trả về {} nếu chưa có."""
+    if not token:
+        return {}
+    owner, repo = GITHUB_REPO.split("/")
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{CANDIDATES_FILE}?ref={GITHUB_BRANCH}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept":        "application/vnd.github+json",
+        "User-Agent":    "meme-signal-bot/2.0",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = json.loads(r.read())
+            content = base64.b64decode(resp["content"]).decode()
+            return json.loads(content)
+    except Exception:
+        return {}
+
+
+def save_candidates(candidates: dict, token: str, dry: bool = False) -> None:
+    if not token or dry:
+        if dry:
+            promoted = [s for s, v in candidates.items() if v.get("seen", 0) >= PROMOTE_THRESHOLD]
+            print(f"  [DRY] candidates.json: {len(candidates)} chain ứng viên, {len(promoted)} đã promote")
+        return
+
+    owner, repo = GITHUB_REPO.split("/")
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{CANDIDATES_FILE}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept":        "application/vnd.github+json",
+        "Content-Type":  "application/json",
+        "User-Agent":    "meme-signal-bot/2.0",
+    }
+
+    sha = None
+    try:
+        req = urllib.request.Request(api_url + f"?ref={GITHUB_BRANCH}", headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            sha = json.loads(r.read()).get("sha")
+    except Exception:
+        pass
+
+    content_b64 = base64.b64encode(json.dumps(candidates, ensure_ascii=False, indent=2).encode()).decode()
+    payload = {
+        "message": f"candidates: update {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        "content": content_b64,
+        "branch":  GITHUB_BRANCH,
+    }
+    if sha:
+        payload["sha"] = sha
+
+    body = json.dumps(payload).encode()
+    req  = urllib.request.Request(api_url, data=body, headers=headers, method="PUT")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            print(f"  [OK] candidates.json đã lưu → {r.status}")
+    except urllib.error.HTTPError as e:
+        print(f"  [ERR] candidates.json lỗi {e.code}: {e.read().decode()[:200]}")
+
+
+def discover_new_chains(known_slugs: set, candidates: dict, token: str, dry: bool = False) -> list:
+    """
+    Khám phá chain mới từ GeckoTerminal.
+    Cập nhật candidates dict in-place.
+    Trả về list ChainStats của chain mới có đủ pool meme.
+    """
+    print(f"\nKhám phá chain mới (tối đa {MAX_DISCOVER} chain) ...")
+    all_networks = fetch_all_networks()
+    if not all_networks:
+        print("  Không lấy được danh sách networks.")
+        return []
+
+    # Lọc chain chưa biết
+    unknown = [(s, n) for s, n in all_networks if s not in known_slugs]
+    print(f"  Tìm thấy {len(unknown)} chain chưa quét trong {len(all_networks)} networks.")
+
+    if not unknown:
+        return []
+
+    # Ưu tiên: chain đã từng thấy (seen > 0) trước, rồi mới hoàn toàn
+    def priority(item):
+        slug = item[0]
+        seen = candidates.get(slug, {}).get("seen", 0)
+        return -seen  # âm để sort tăng dần = seen cao lên trước
+
+    unknown.sort(key=priority)
+    to_test = unknown[:MAX_DISCOVER]
+
+    discovered = []
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+    for i, (slug, name) in enumerate(to_test):
+        print(f"  Thử [{i+1}/{len(to_test)}] {name} ({slug}) ...", end=" ", flush=True)
+        s = fetch_chain(slug, name, is_new=True)
+
+        if s.error:
+            print(f"lỗi: {s.error}")
+            time.sleep(GT_GAP)
+            continue
+
+        if s.meme_count < MIN_MEME_POOLS:
+            print(f"bỏ qua ({s.meme_count} pool meme < {MIN_MEME_POOLS})")
+            time.sleep(GT_GAP)
+            continue
+
+        print(f"ĐẠT · {s.meme_count} pool meme · điểm {s.heat_score}")
+
+        # Cập nhật candidates
+        entry = candidates.get(slug, {"name": name, "seen": 0, "first_seen": today})
+        entry["seen"]       = entry.get("seen", 0) + 1
+        entry["last_score"] = s.heat_score
+        entry["last_seen"]  = today
+        entry["name"]       = name
+        candidates[slug]    = entry
+
+        discovered.append(s)
+        if i < len(to_test) - 1:
+            time.sleep(GT_GAP)
+
+    # Tăng seen cho chain đã biết trong candidates (để theo dõi trend)
+    # (không cần làm gì thêm vì ta chỉ tăng khi gặp mới)
+
+    promoted = [(s, v["name"]) for s, v in candidates.items()
+                if v.get("seen", 0) >= PROMOTE_THRESHOLD and s not in known_slugs]
+    if promoted:
+        print(f"\n  ⭐ {len(promoted)} chain đã đủ điều kiện promote: "
+              + ", ".join(n for _, n in promoted))
+
+    return discovered
+
+# ─── Formatters ────────────────────────────────────────────────────────────────
 
 def fmt_usd(v: float) -> str:
     if v >= 1e9:  return f"${v/1e9:.1f}B"
@@ -250,14 +417,13 @@ def fmt_age(h: float) -> str:
     return f"{h:.0f}h"
 
 def heat_label(score: float) -> tuple:
-    """Return (label_text, label_class, fill_class, bar_class)."""
     if score >= 15: return "rất nóng", "l-hot",  "f-hot",  "hot"
     if score >= 4:  return "nóng",     "l-warm",  "f-warm", "warm"
     if score >= 1:  return "ấm",       "l-cool",  "f-cool", "cool"
     if score > 0:   return "nguội",    "l-cold",  "f-cold", "cold"
     return "chết", "l-cold", "f-cold", "cold"
 
-# ─── HTML generation ──────────────────────────────────────────────────────────
+# ─── HTML generation ───────────────────────────────────────────────────────────
 
 CSS = """
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;600;700;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -305,8 +471,9 @@ section{margin-top:50px}
 .shead h2{font-size:21px;font-weight:700;letter-spacing:-.015em}
 .shead .note{margin-left:auto;font-size:12px;color:var(--muted);font-family:"IBM Plex Mono",monospace}
 .rank{display:flex;flex-direction:column;gap:2px}
-.rk{display:grid;grid-template-columns:26px 140px 1fr 66px;align-items:center;gap:11px;
+.rk{display:grid;grid-template-columns:26px 160px 1fr 66px;align-items:center;gap:11px;
   padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:5px}
+.rk.new-chain{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
 .rk .p{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);text-align:right}
 .rk .nm{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .rk .track{height:19px;background:var(--surface-2);border-radius:3px;overflow:hidden}
@@ -322,6 +489,7 @@ section{margin-top:50px}
 .l-warm{background:color-mix(in srgb,var(--warm) 18%,transparent);color:var(--warm)}
 .l-cool{background:color-mix(in srgb,var(--cool) 16%,transparent);color:var(--cool)}
 .l-cold{background:var(--surface-2);color:var(--muted)}
+.l-new{background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent)}
 .tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 table{border-collapse:collapse;width:100%;min-width:720px;font-size:13px}
 th{text-align:left;padding:10px 11px;font-family:"IBM Plex Mono",monospace;font-size:10px;
@@ -333,6 +501,7 @@ tbody tr:last-child td{border-bottom:none}
 td.sym{font-weight:600;font-family:"IBM Plex Mono",monospace}
 tr.hi{background:color-mix(in srgb,var(--hot) 7%,transparent)}
 tr.dim td{color:var(--muted)}
+tr.new-row{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 .pos{color:var(--good)}.neg{color:var(--bad)}
 .movers{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
 .mv{border:1px solid var(--line);border-radius:7px;background:var(--surface);overflow:hidden}
@@ -366,16 +535,13 @@ def _pct_class(v: float) -> str:
     if v < 0: return "neg"
     return ""
 
-
 def _row_class(rank: int, s: ChainStats) -> str:
-    if rank <= 3 and s.heat_score >= 4:
-        return "hi"
-    if s.heat_score < 1:
-        return "dim"
+    if s.is_new: return "new-row"
+    if rank <= 3 and s.heat_score >= 4: return "hi"
+    if s.heat_score < 1: return "dim"
     return ""
 
-
-def _verdict_cards(sorted_chains: list, now_str: str) -> str:
+def _verdict_cards(sorted_chains: list, num_chains: int) -> str:
     ok = [c for c in sorted_chains if not c.error and c.meme_count > 0]
     if not ok:
         return ""
@@ -419,7 +585,6 @@ def _verdict_cards(sorted_chains: list, now_str: str) -> str:
     </div>
   </div>"""
 
-
 def _ranking_section(sorted_chains: list) -> str:
     ok = [c for c in sorted_chains if not c.error]
     if not ok:
@@ -430,16 +595,17 @@ def _ranking_section(sorted_chains: list) -> str:
     for i, c in enumerate(ok, 1):
         lbl, lcls, fcls, _ = heat_label(c.heat_score)
         width = f"{c.heat_score / max_score * 100:.1f}%"
+        new_badge = ' <span class="lab l-new">mới</span>' if c.is_new else ""
+        rk_cls = " new-chain" if c.is_new else ""
         rows.append(
-            f'    <div class="rk">'
+            f'    <div class="rk{rk_cls}">'
             f'<span class="p">{i}</span>'
-            f'<span class="nm">{c.name} <span class="lab {lcls}">{lbl}</span></span>'
+            f'<span class="nm">{c.name}{new_badge} <span class="lab {lcls}">{lbl}</span></span>'
             f'<span class="track"><span class="fill {fcls}" style="width:{width}"></span></span>'
             f'<span class="sc">{c.heat_score}</span>'
             f'</div>'
         )
     return '<div class="rank">\n' + "\n".join(rows) + "\n  </div>"
-
 
 def _table_section(sorted_chains: list) -> str:
     rows = []
@@ -454,8 +620,9 @@ def _table_section(sorted_chains: list) -> str:
         rcls      = _row_class(i + 1, c)
         pool_str  = f"{c.meme_count}/{c.raw_count}"
         h24c      = _pct_class(c.median_h24)
+        new_badge = " 🆕" if c.is_new else ""
         rows.append(
-            f'<tr class="{rcls}"><td class="sym">{c.name}</td>'
+            f'<tr class="{rcls}"><td class="sym">{c.name}{new_badge}</td>'
             f'<td class="n">{pool_str}</td>'
             f'<td class="n">{fmt_usd(c.liq_usd)}</td>'
             f'<td class="n">{fmt_usd(c.vol_24h)}</td>'
@@ -481,10 +648,8 @@ def _table_section(sorted_chains: list) -> str:
     </table>
   </div>
   <p style="font-size:13px;color:var(--muted);margin-top:11px">
-    <strong>Vòng quay</strong> = volume 24h chia thanh khoản. Đây là chỉ số quan trọng nhất:
-    nó đo tiền thật sự chảy qua pool chứ không phải vốn nằm chết.
+    <strong>Vòng quay</strong> = volume 24h chia thanh khoản. 🆕 = chain mới được khám phá lần này.
   </p>"""
-
 
 def _movers_card(c: ChainStats) -> str:
     lbl, lcls, _, _ = heat_label(c.heat_score)
@@ -506,9 +671,10 @@ def _movers_card(c: ChainStats) -> str:
         )
 
     items_html = "\n".join(items) if items else "    <li><span>Không có pool meme</span></li>"
+    new_badge = ' <span class="lab l-new">mới khám phá</span>' if c.is_new else ""
     return f"""  <div class="mv">
     <div class="h">
-      <span class="nm">{c.name}</span>
+      <span class="nm">{c.name}{new_badge}</span>
       <span class="lab {lcls}">{subtitle}</span>
       <span class="st">{fmt_usd(c.vol_24h)}</span>
     </div>
@@ -517,21 +683,18 @@ def _movers_card(c: ChainStats) -> str:
     </ul>
   </div>"""
 
-
 def _movers_section(sorted_chains: list) -> str:
     ok = [c for c in sorted_chains if not c.error and c.meme_count > 0]
     if not ok:
         return "<p>Không có dữ liệu.</p>"
 
     featured = ok[:3]
-    # Add Base as contrast if not already in top 3
     base_chain = next((c for c in sorted_chains if c.slug == "base"), None)
     if base_chain and base_chain not in featured:
         featured.append(base_chain)
 
     cards = [_movers_card(c) for c in featured]
     return '  <div class="movers">\n' + "\n".join(cards) + "\n  </div>"
-
 
 def _analysis_section(sorted_chains: list) -> str:
     ok = [c for c in sorted_chains if not c.error and c.meme_count > 0]
@@ -544,126 +707,165 @@ def _analysis_section(sorted_chains: list) -> str:
     hottest  = ok[0]
     coldest  = min(ok, key=lambda c: c.heat_score)
 
-    # Callout 1: market sentiment
     if negative_count > total_ok * 0.7:
         parts.append(f"""  <div class="callout bad">
     <h3>Toàn thị trường meme đang trong giai đoạn giảm</h3>
     <p>{negative_count}/{total_ok} chain có trung vị h24 âm. Hầu hết token trending thực ra đang giảm — chỉ vài token bùng nổ kéo con số trung bình lên. Đây là đặc trưng của <strong>cuối sóng hoặc thị trường yếu</strong>.</p>
-    <p>Bot paper trader sẽ ít tín hiệu đạt ngưỡng điểm số và tỉ lệ thắng có khả năng thấp hơn bình thường trong giai đoạn này.</p>
   </div>""")
     elif negative_count > total_ok * 0.4:
         parts.append(f"""  <div class="callout warn">
     <h3>Thị trường phân hóa — {negative_count}/{total_ok} chain âm</h3>
-    <p>Không phải xu hướng rõ ràng. Chọn lọc chain và thời điểm quan trọng hơn bình thường. Ưu tiên các chain có vòng quay cao và pool mới nhiều.</p>
+    <p>Không phải xu hướng rõ ràng. Chọn lọc chain và thời điểm quan trọng hơn bình thường.</p>
   </div>""")
     else:
         parts.append(f"""  <div class="callout">
     <h3>Thị trường đang phục hồi — chỉ {negative_count}/{total_ok} chain âm</h3>
-    <p>Tín hiệu tích cực. Các chain nóng có thể tạo thêm cơ hội trong 12h tới. Theo dõi sát vòng quay và pool mới.</p>
+    <p>Tín hiệu tích cực. Các chain nóng có thể tạo thêm cơ hội trong 12h tới.</p>
   </div>""")
 
-    # Callout 2: hottest chain
     top_by_blast = sorted(hottest.pools, key=lambda p: p.h24_pct, reverse=True)[:3]
     blast_names  = ", ".join(p.symbol for p in top_by_blast)
     parts.append(f"""  <div class="callout">
     <h3>{hottest.name} dẫn đầu với điểm {hottest.heat_score}</h3>
-    <p>Vòng quay {hottest.turnover:.1f}× trên {fmt_usd(hottest.liq_usd)} thanh khoản, {hottest.blast_count} token vượt +100%, {hottest.new_count} pool dưới 48h. LP trung vị {fmt_usd(hottest.median_lp)}{"." if not blast_names else f" — token bùng nổ: {blast_names}."}</p>
+    <p>Vòng quay {hottest.turnover:.1f}× trên {fmt_usd(hottest.liq_usd)} thanh khoản, {hottest.blast_count} token vượt +100%, {hottest.new_count} pool dưới 48h{"." if not blast_names else f" — token bùng nổ: {blast_names}."}</p>
   </div>""")
 
-    # Callout 3: coldest chain (only if not the same as hottest)
     if coldest.slug != hottest.slug:
         parts.append(f"""  <div class="callout warn">
     <h3>{coldest.name} đang lạnh nhất ({coldest.heat_score} điểm)</h3>
-    <p>Trung vị h24 {fmt_pct(coldest.median_h24)}, {coldest.blast_count} token vượt +100%, {coldest.new_count} pool dưới 48h. Vòng quay chỉ {coldest.turnover:.2f}× — tín hiệu meme thưa thớt trên chain này.</p>
+    <p>Trung vị h24 {fmt_pct(coldest.median_h24)}, {coldest.blast_count} token vượt +100%, vòng quay {coldest.turnover:.2f}×.</p>
   </div>""")
 
-    # Callout 4: Robinhood vs Base comparison (if both have data)
     rh = next((c for c in ok if c.slug == "robinhood"), None)
     ba = next((c for c in ok if c.slug == "base"),      None)
     if rh and ba:
         parts.append(f"""  <div class="callout">
     <h3>Robinhood vs Base — hai hướng khác nhau</h3>
-    <p>Robinhood: {rh.new_count} pool mới trong 48h, LP trung vị {fmt_usd(rh.median_lp)} — nhiều cơ hội bắt momentum sớm nhưng thanh khoản mỏng, trượt giá cao hơn.
-    Base: LP trung vị {fmt_usd(ba.median_lp)}, {ba.blast_count} token +100% — thanh khoản sâu hơn nhưng {"ít tín hiệu mới" if ba.new_count < 3 else f"{ba.new_count} pool mới, đang sống động"}.</p>
+    <p>Robinhood: {rh.new_count} pool mới trong 48h, LP trung vị {fmt_usd(rh.median_lp)}.
+    Base: LP trung vị {fmt_usd(ba.median_lp)}, {ba.blast_count} token +100%.</p>
+  </div>""")
+
+    # Highlight newly discovered chains
+    new_chains = [c for c in ok if c.is_new]
+    if new_chains:
+        nc_list = "".join(
+            f"<li><strong>{c.name}</strong> — {c.meme_count} pool meme, điểm {c.heat_score}, "
+            f"vòng quay {c.turnover:.2f}×</li>"
+            for c in new_chains
+        )
+        parts.append(f"""  <div class="callout">
+    <h3>🆕 Chain mới được khám phá lần này</h3>
+    <ul class="plain">{nc_list}</ul>
+    <p>Chain mới xuất hiện đủ {PROMOTE_THRESHOLD} lần sẽ tự động được thêm vào danh sách cố định.</p>
   </div>""")
 
     return "\n".join(parts)
 
 
-def generate_html(sorted_chains: list, scan_dt: datetime.datetime) -> str:
-    dt_str  = scan_dt.strftime("%d-%m-%Y %H:%M UTC")
-    ok_chains = [c for c in sorted_chains if not c.error]
+def generate_html(sorted_chains: list, scan_dt: datetime.datetime, candidates: dict) -> str:
+    dt_str    = scan_dt.strftime("%d-%m-%Y %H:%M UTC")
+    num_total = len([c for c in sorted_chains if not c.error])
+    num_new   = len([c for c in sorted_chains if c.is_new and not c.error])
+    chain_label = f"{num_total} chain" + (f" (+{num_new} mới)" if num_new else "")
+
+    # Promoted chains waiting to be added
+    promoted_slugs = {s for s, v in candidates.items()
+                      if v.get("seen", 0) >= PROMOTE_THRESHOLD}
 
     lines = [
         "<!doctype html><html lang='vi'>",
         "<head>",
         "<meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width,initial-scale=1'>",
-        "<title>Bản Đồ Nhiệt Meme 18 Chain</title>",
+        f"<title>Bản Đồ Nhiệt Meme · {chain_label}</title>",
         CSS,
         "</head><body>",
         "<div class='wrap'>",
 
-        # Header
         "<header>",
-        f"  <div class='eyebrow'>GeckoTerminal · 18 mạng lưới · {dt_str}</div>",
-        "  <h1>Bản Đồ Nhiệt Meme 18 Chain</h1>",
-        "  <p class='sub'>Quét top 20 pool trending mỗi mạng lưới, lọc bỏ cặp stablecoin và wrapped, xếp hạng theo dòng tiền thực chảy qua pool meme.</p>",
-        _verdict_cards(sorted_chains, dt_str),
+        f"  <div class='eyebrow'>GeckoTerminal · {chain_label} · {dt_str}</div>",
+        "  <h1>Bản Đồ Nhiệt Meme</h1>",
+        "  <p class='sub'>Quét top 20 pool trending mỗi mạng lưới, lọc bỏ cặp stablecoin và wrapped, xếp hạng theo dòng tiền thực chảy qua pool meme. Chain mới tự động được khám phá mỗi lần quét.</p>",
+        _verdict_cards(sorted_chains, num_total),
         "</header>",
 
-        # Section 01 — Heat ranking
         "<section>",
         "  <div class='shead'><span class='idx'>01</span><h2>Xếp hạng độ nóng</h2>"
         "<span class='note'>điểm = vòng quay × token bùng nổ × pool mới</span></div>",
         _ranking_section(sorted_chains),
         "</section>",
 
-        # Section 02 — Full data table
         "<section>",
         "  <div class='shead'><span class='idx'>02</span><h2>Số liệu đầy đủ</h2>"
         "<span class='note'>chỉ tính pool meme, đã lọc cặp hạ tầng</span></div>",
         _table_section(sorted_chains),
         "</section>",
 
-        # Section 03 — Top movers
         "<section>",
         "  <div class='shead'><span class='idx'>03</span><h2>Token đang kéo sóng</h2>"
         "<span class='note'>3 chain nóng nhất + Base để đối chiếu</span></div>",
         _movers_section(sorted_chains),
         "</section>",
 
-        # Section 04 — Analysis
         "<section>",
         "  <div class='shead'><span class='idx'>04</span><h2>Đọc bảng này thế nào</h2></div>",
         _analysis_section(sorted_chains),
         "</section>",
 
-        # Section 05 — How to automate
-        """<section>
-  <div class="shead"><span class="idx">05</span><h2>Cách tự động hoá việc quét</h2></div>
-  <p>Toàn bộ bảng trên dựng từ <strong>một endpoint duy nhất</strong>, không cần khoá API:</p>
-  <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:13px 16px;margin:14px 0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;overflow-x:auto;white-space:pre">GET api.geckoterminal.com/api/v2/networks/{slug}/trending_pools</div>
-  <ul class="plain">
-    <li><strong>Giới hạn gọi</strong> — 18 chain cần giãn cách 8 giây mỗi lượt, tổng khoảng 2.5 phút. Gọi dồn sẽ bị chặn.</li>
-    <li><strong>Lọc cặp hạ tầng</strong> — bắt buộc. Nếu không lọc, Tron sẽ đứng đầu thanh khoản còn Arbitrum trông như đang có sóng.</li>
-    <li><strong>Vòng quay là chỉ số dẫn</strong> — không phải thanh khoản tuyệt đối, cũng không phải h24 trung bình. Dùng trung vị để đo bề rộng.</li>
-    <li><strong>Nhịp quét</strong> — 12 giờ/lần (7h sáng và 7h tối). Sóng meme chuyển chain theo ngày.</li>
-  </ul>
-</section>""",
-
-        # Footer
         f"""<footer>
   Nguồn: GeckoTerminal API v2, endpoint trending_pools, top 20 pool mỗi mạng lưới · chụp {dt_str}<br>
-  Bộ lọc cặp hạ tầng loại token gốc thuộc nhóm stablecoin, wrapped native và bluechip · Vòng quay = volume 24h ÷ thanh khoản pool<br>
-  Tự động cập nhật 2 lần/ngày lúc 7:00 và 19:00 (UTC+7)
+  Bộ lọc cặp hạ tầng loại stablecoin, wrapped native và bluechip · Vòng quay = volume 24h ÷ thanh khoản<br>
+  Tự động cập nhật 2 lần/ngày lúc 7:00 và 19:00 (UTC+7) · Chain ứng viên trong candidates.json: {len(candidates)}
 </footer>""",
 
         "</div></body></html>",
     ]
     return "\n".join(lines)
 
-# ─── GitHub push ──────────────────────────────────────────────────────────────
+# ─── GitHub push ───────────────────────────────────────────────────────────────
+
+def _github_put(api_url: str, token: str, filename: str,
+                content_b64: str, sha: Optional[str], message: str, dry: bool) -> bool:
+    if not token:
+        print(f"  [WARN] GITHUB_TOKEN không có — bỏ qua {filename}")
+        return False
+
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept":        "application/vnd.github+json",
+        "Content-Type":  "application/json",
+        "User-Agent":    "meme-signal-bot/2.0",
+    }
+    payload = {"message": message, "content": content_b64, "branch": GITHUB_BRANCH}
+    if sha:
+        payload["sha"] = sha
+
+    if dry:
+        print(f"  [DRY] Sẽ push {filename}")
+        return True
+
+    body = json.dumps(payload).encode()
+    req  = urllib.request.Request(api_url, data=body, headers=headers, method="PUT")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            print(f"  [OK] {filename} → {r.status}")
+            return True
+    except urllib.error.HTTPError as e:
+        print(f"  [ERR] {filename} lỗi {e.code}: {e.read().decode()[:200]}")
+        return False
+
+def _github_get_sha(api_url: str, token: str) -> Optional[str]:
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept":        "application/vnd.github+json",
+        "User-Agent":    "meme-signal-bot/2.0",
+    }
+    try:
+        req = urllib.request.Request(api_url + f"?ref={GITHUB_BRANCH}", headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read()).get("sha")
+    except Exception:
+        return None
 
 def push_github(html: str, dry: bool = False) -> str:
     token = os.getenv("GITHUB_TOKEN", "")
@@ -673,53 +875,21 @@ def push_github(html: str, dry: bool = False) -> str:
 
     owner, repo = GITHUB_REPO.split("/")
     api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{GITHUB_FILE}"
-    params  = f"?ref={GITHUB_BRANCH}"
-
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept":        "application/vnd.github+json",
-        "Content-Type":  "application/json",
-        "User-Agent":    "meme-heatmap/1.0",
-    }
-
-    # Get current SHA (needed for update)
-    sha = None
-    try:
-        req = urllib.request.Request(api_url + params, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as r:
-            existing = json.loads(r.read())
-            sha = existing.get("sha")
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            print(f"  [WARN] GitHub GET lỗi {e.code}: {e.reason}")
+    sha     = _github_get_sha(api_url, token)
 
     content_b64 = base64.b64encode(html.encode()).decode()
-    payload = {
-        "message": f"heatmap: auto update {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
-        "content": content_b64,
-        "branch":  GITHUB_BRANCH,
-    }
-    if sha:
-        payload["sha"] = sha
+    ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    ok = _github_put(api_url, token, GITHUB_FILE, content_b64, sha,
+                     f"heatmap: auto update {ts}", dry)
 
-    if dry:
-        print(f"  [DRY] Sẽ push {len(html)} bytes lên {GITHUB_REPO}/{GITHUB_FILE} (sha={sha})")
+    if ok:
         return f"https://{owner}.github.io/{repo}/{GITHUB_FILE}"
+    return ""
 
-    body = json.dumps(payload).encode()
-    req  = urllib.request.Request(api_url, data=body, headers=headers, method="PUT")
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            print(f"  [OK] Push GitHub thành công → {r.status}")
-    except urllib.error.HTTPError as e:
-        print(f"  [ERR] GitHub PUT lỗi {e.code}: {e.read().decode()[:200]}")
-        return ""
+# ─── Telegram ──────────────────────────────────────────────────────────────────
 
-    return f"https://{owner}.github.io/{repo}/{GITHUB_FILE}"
-
-# ─── Telegram ─────────────────────────────────────────────────────────────────
-
-def send_telegram(sorted_chains: list, page_url: str, dry: bool = False):
+def send_telegram(sorted_chains: list, page_url: str, new_chains: list,
+                  candidates: dict, dry: bool = False):
     token   = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
@@ -735,11 +905,12 @@ def send_telegram(sorted_chains: list, page_url: str, dry: bool = False):
 
     negative_count = sum(1 for c in ok if c.median_h24 < 0)
     neg_pct = int(negative_count / len(ok) * 100)
+    num_chains = len([c for c in sorted_chains if not c.error])
 
     emoji_map = {"rất nóng": "🔥", "nóng": "🔶", "ấm": "🟡", "nguội": "🔵", "chết": "⚫"}
 
     lines = [
-        f"🌡️ <b>Bản đồ nhiệt meme · 18 chain · {ts}</b>",
+        f"🌡️ <b>Bản đồ nhiệt meme · {num_chains} chain · {ts}</b>",
         "",
     ]
 
@@ -748,8 +919,9 @@ def send_telegram(sorted_chains: list, page_url: str, dry: bool = False):
         em  = emoji_map.get(lbl, "")
         blast_note = f" · {c.blast_count}🚀" if c.blast_count else ""
         new_note   = f" · {c.new_count}🆕" if c.new_count else ""
+        new_tag    = " <i>(mới)</i>" if c.is_new else ""
         lines.append(
-            f"{i}. {em} <b>{c.name}</b> — {c.heat_score} điểm "
+            f"{i}. {em} <b>{c.name}</b>{new_tag} — {c.heat_score} điểm "
             f"({c.turnover:.1f}× vòng quay{blast_note}{new_note})"
         )
 
@@ -761,6 +933,17 @@ def send_telegram(sorted_chains: list, page_url: str, dry: bool = False):
         "",
         f"📉 Bối cảnh: {negative_count}/{len(ok)} chain trung vị âm ({neg_pct}%)",
     ]
+
+    if new_chains:
+        nc_names = ", ".join(c.name for c in new_chains)
+        lines += ["", f"🔍 Khám phá mới: {nc_names}"]
+
+    # Promoted chains
+    promoted = [(s, v["name"]) for s, v in candidates.items()
+                if v.get("seen", 0) >= PROMOTE_THRESHOLD]
+    if promoted:
+        pr_names = ", ".join(n for _, n in promoted)
+        lines += ["", f"⭐ Sắp tự động thêm: {pr_names}"]
 
     if page_url:
         lines += ["", f"🌐 <a href='{page_url}'>Xem chi tiết</a>"]
@@ -786,43 +969,88 @@ def send_telegram(sorted_chains: list, page_url: str, dry: bool = False):
     except Exception as e:
         print(f"  [ERR] Telegram: {e}")
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ─── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    ap = argparse.ArgumentParser(description="Bản đồ nhiệt meme 18 chain")
+    ap = argparse.ArgumentParser(description="Bản đồ nhiệt meme đa chain")
     ap.add_argument("--dry", action="store_true",
                     help="quét nhưng không push GitHub / không gửi Telegram")
+    ap.add_argument("--no-discover", action="store_true",
+                    help="bỏ qua bước khám phá chain mới")
     args = ap.parse_args()
 
-    # Load env from local .env (both possible locations)
     load_dotenv(".env")
     load_dotenv(os.path.expanduser("~/.env"))
 
-    print(f"=== meme_heatmap.py === {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"Quét {len(CHAINS)} chain, giãn cách {GT_GAP}s mỗi lượt (~{len(CHAINS)*GT_GAP//60}-4 phút)")
+    token = os.getenv("GITHUB_TOKEN", "")
+
+    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    print(f"=== meme_signal_bot.py === {now_str}")
+
+    # Load candidates từ gh-pages
+    print("Đọc candidates.json từ gh-pages ...")
+    candidates = load_candidates(token)
+    if args.dry:
+        print(f"  [DRY MODE] candidates: {len(candidates)} entries")
+
+    # Build danh sách chain: cố định + auto-promoted
+    known_slugs = {slug for slug, _ in CHAINS}
+    promoted_chains = [
+        (slug, v["name"])
+        for slug, v in candidates.items()
+        if v.get("seen", 0) >= PROMOTE_THRESHOLD and slug not in known_slugs
+    ]
+
+    active_chains = list(CHAINS) + [(s, n, False) for s, n in promoted_chains]
+    if promoted_chains:
+        print(f"  + {len(promoted_chains)} chain đã promote: "
+              + ", ".join(n for _, n in promoted_chains))
+
+    print(f"\nQuét {len(active_chains)} chain, giãn cách {GT_GAP}s mỗi lượt")
     if args.dry:
         print("  [DRY MODE] Sẽ không push GitHub hoặc gửi Telegram")
     print()
 
-    chains = scan_all_chains()
+    # Scan các chain đã biết
+    chain_input = [(s, n) + ((is_new,) if len(t := (s, n, False)) > 2 else ())
+                   for t in active_chains for s, n, *rest in [t]]
+    # Đơn giản hơn:
+    scan_input = []
+    for entry in active_chains:
+        if len(entry) == 3:
+            scan_input.append(entry)  # (slug, name, is_new_flag)
+        else:
+            scan_input.append((entry[0], entry[1], False))
 
-    # Sort by heat_score descending (errors at end)
+    results = scan_chains(scan_input)
+
+    # Khám phá chain mới
+    new_discovered = []
+    if not args.no_discover:
+        all_known = known_slugs | {slug for slug, v in candidates.items()
+                                   if v.get("seen", 0) >= PROMOTE_THRESHOLD}
+        new_discovered = discover_new_chains(all_known, candidates, token, dry=args.dry)
+        results.extend(new_discovered)
+
+    # Sort by heat_score
     sorted_chains = sorted(
-        chains,
+        results,
         key=lambda c: (0 if c.error else 1, c.heat_score),
         reverse=True
     )
 
     scan_dt = datetime.datetime.utcnow()
-    html    = generate_html(sorted_chains, scan_dt)
-
+    html    = generate_html(sorted_chains, scan_dt, candidates)
     print(f"\nHTML tạo xong: {len(html):,} bytes")
 
     print("\nĐẩy lên GitHub Pages ...")
     page_url = push_github(html, dry=args.dry)
 
+    print("\nLưu candidates.json ...")
+    save_candidates(candidates, token, dry=args.dry)
+
     print("\nGửi Telegram ...")
-    send_telegram(sorted_chains, page_url, dry=args.dry)
+    send_telegram(sorted_chains, page_url, new_discovered, candidates, dry=args.dry)
 
     print("\nXong.")
 

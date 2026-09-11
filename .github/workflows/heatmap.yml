@@ -28,9 +28,9 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run heatmap scanner
+      - name: Run meme signal bot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python meme_heatmap.py
+        run: python meme_signal_bot.py
