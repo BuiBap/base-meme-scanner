@@ -1,0 +1,109 @@
+{
+  "snapshots": [
+    {
+      "ts": "2026-09-21T03:49:17Z",
+      "chains": {
+        "solana": {
+          "heat": 10.83,
+          "turnover": 3.166357088409021,
+          "meme_count": 19
+        },
+        "robinhood": {
+          "heat": 7.72,
+          "turnover": 5.326678740385329,
+          "meme_count": 20
+        },
+        "bsc": {
+          "heat": 3.9,
+          "turnover": 2.7862706354350664,
+          "meme_count": 16
+        },
+        "monad": {
+          "heat": 1.46,
+          "turnover": 1.4623822896343381,
+          "meme_count": 9
+        },
+        "base": {
+          "heat": 1.35,
+          "turnover": 1.3480675689771535,
+          "meme_count": 16
+        },
+        "avax": {
+          "heat": 1.12,
+          "turnover": 1.124035300404802,
+          "meme_count": 9
+        },
+        "sui-network": {
+          "heat": 0.95,
+          "turnover": 0.9534728204770418,
+          "meme_count": 15
+        },
+        "polygon_pos": {
+          "heat": 0.58,
+          "turnover": 0.578059141656697,
+          "meme_count": 8
+        },
+        "sei-evm": {
+          "heat": 0.53,
+          "turnover": 0.528506019582776,
+          "meme_count": 11
+        },
+        "arbitrum": {
+          "heat": 0.46,
+          "turnover": 0.46403328864640564,
+          "meme_count": 4
+        },
+        "sonic": {
+          "heat": 0.43,
+          "turnover": 0.4271191432262703,
+          "meme_count": 7
+        },
+        "plasma": {
+          "heat": 0.31,
+          "turnover": 0.3102250095181382,
+          "meme_count": 14
+        },
+        "eth": {
+          "heat": 0.22,
+          "turnover": 0.21794085276566347,
+          "meme_count": 11
+        },
+        "hyperliquid": {
+          "heat": 0.21,
+          "turnover": 0.21393865028225936,
+          "meme_count": 14
+        },
+        "berachain": {
+          "heat": 0.11,
+          "turnover": 0.11284256721918139,
+          "meme_count": 12
+        },
+        "ftm": {
+          "heat": 0.11,
+          "turnover": 0.10802718167515903,
+          "meme_count": 6
+        },
+        "cro": {
+          "heat": 0.03,
+          "turnover": 0.02078179716506177,
+          "meme_count": 14
+        },
+        "abstract": {
+          "heat": 0.02,
+          "turnover": 0.017438734179593646,
+          "meme_count": 5
+        },
+        "unichain": {
+          "heat": 0.02,
+          "turnover": 0.01725800794636981,
+          "meme_count": 3
+        },
+        "tron": {
+          "heat": 0.01,
+          "turnover": 0.009263827696654701,
+          "meme_count": 11
+        }
+      }
+    }
+  ]
+}
