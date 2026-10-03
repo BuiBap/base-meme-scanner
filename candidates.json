@@ -12,5 +12,12 @@
     "first_seen": "2026-09-21",
     "last_score": 0.0,
     "last_seen": "2026-10-03"
+  },
+  "aurora": {
+    "name": "Aurora",
+    "seen": 1,
+    "first_seen": "2026-10-03",
+    "last_score": 0.08,
+    "last_seen": "2026-10-03"
   }
 }
