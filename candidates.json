@@ -1,16 +1,16 @@
 {
   "cro": {
     "name": "Cronos",
-    "seen": 2,
+    "seen": 3,
     "first_seen": "2026-09-21",
-    "last_score": 0.03,
-    "last_seen": "2026-09-21"
+    "last_score": 0.01,
+    "last_seen": "2026-10-03"
   },
   "ftm": {
     "name": "Fantom",
-    "seen": 2,
+    "seen": 3,
     "first_seen": "2026-09-21",
-    "last_score": 0.19,
-    "last_seen": "2026-09-21"
+    "last_score": 0.0,
+    "last_seen": "2026-10-03"
   }
 }
