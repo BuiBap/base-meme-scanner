@@ -19,5 +19,12 @@
     "first_seen": "2026-10-03",
     "last_score": 0.16,
     "last_seen": "2026-10-05"
+  },
+  "metis": {
+    "name": "Metis",
+    "seen": 1,
+    "first_seen": "2026-10-06",
+    "last_score": 0.01,
+    "last_seen": "2026-10-06"
   }
 }
