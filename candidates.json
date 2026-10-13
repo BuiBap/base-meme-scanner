@@ -33,5 +33,12 @@
     "first_seen": "2026-10-09",
     "last_score": 0.1,
     "last_seen": "2026-10-11"
+  },
+  "kcc": {
+    "name": "Kucoin Community Chain",
+    "seen": 1,
+    "first_seen": "2026-10-13",
+    "last_score": 0.0,
+    "last_seen": "2026-10-13"
   }
 }
