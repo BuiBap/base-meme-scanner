@@ -1594,6 +1594,131 @@
           "meme_count": 11
         }
       }
+    },
+    {
+      "ts": "2026-10-14T04:14:37Z",
+      "chains": {
+        "solana": {
+          "heat": 47.29,
+          "turnover": 7.16580622026181,
+          "meme_count": 20
+        },
+        "robinhood": {
+          "heat": 7.36,
+          "turnover": 2.5739588887739413,
+          "meme_count": 20
+        },
+        "bsc": {
+          "heat": 2.76,
+          "turnover": 2.3959078830371245,
+          "meme_count": 20
+        },
+        "base": {
+          "heat": 2.17,
+          "turnover": 2.1712401926355005,
+          "meme_count": 19
+        },
+        "avax": {
+          "heat": 1.36,
+          "turnover": 1.3552384600042604,
+          "meme_count": 15
+        },
+        "sui-network": {
+          "heat": 1.05,
+          "turnover": 1.0451471707906241,
+          "meme_count": 20
+        },
+        "sonic": {
+          "heat": 0.77,
+          "turnover": 0.7732131419413077,
+          "meme_count": 14
+        },
+        "arbitrum": {
+          "heat": 0.62,
+          "turnover": 0.34314583582040525,
+          "meme_count": 14
+        },
+        "eth": {
+          "heat": 0.44,
+          "turnover": 0.44183651919255085,
+          "meme_count": 20
+        },
+        "monad": {
+          "heat": 0.42,
+          "turnover": 0.4249871523082824,
+          "meme_count": 12
+        },
+        "sei-evm": {
+          "heat": 0.34,
+          "turnover": 0.3440886405710724,
+          "meme_count": 10
+        },
+        "abstract": {
+          "heat": 0.23,
+          "turnover": 0.22734556433993963,
+          "meme_count": 13
+        },
+        "cro": {
+          "heat": 0.12,
+          "turnover": 0.06388653322077117,
+          "meme_count": 18
+        },
+        "fuse": {
+          "heat": 0.09,
+          "turnover": 0.09417035071949358,
+          "meme_count": 10
+        },
+        "unichain": {
+          "heat": 0.08,
+          "turnover": 0.08295824369871972,
+          "meme_count": 4
+        },
+        "berachain": {
+          "heat": 0.06,
+          "turnover": 0.05821860978203213,
+          "meme_count": 18
+        },
+        "polygon_pos": {
+          "heat": 0.05,
+          "turnover": 0.04791612905641976,
+          "meme_count": 17
+        },
+        "aurora": {
+          "heat": 0.05,
+          "turnover": 0.05153913363391782,
+          "meme_count": 20
+        },
+        "hyperliquid": {
+          "heat": 0.02,
+          "turnover": 0.022247621337221475,
+          "meme_count": 15
+        },
+        "metis": {
+          "heat": 0.02,
+          "turnover": 0.02062434826412763,
+          "meme_count": 10
+        },
+        "plasma": {
+          "heat": 0.01,
+          "turnover": 0.010682203644522964,
+          "meme_count": 13
+        },
+        "tron": {
+          "heat": 0.01,
+          "turnover": 0.007024177971989022,
+          "meme_count": 13
+        },
+        "ftm": {
+          "heat": 0.01,
+          "turnover": 0.006643822892294518,
+          "meme_count": 13
+        },
+        "kcc": {
+          "heat": 0.0,
+          "turnover": 0.004082236410077058,
+          "meme_count": 13
+        }
+      }
     }
   ]
 }
