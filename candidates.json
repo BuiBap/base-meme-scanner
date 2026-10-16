@@ -40,5 +40,12 @@
     "first_seen": "2026-10-13",
     "last_score": 0.0,
     "last_seen": "2026-10-15"
+  },
+  "iotx": {
+    "name": "IOTEX",
+    "seen": 1,
+    "first_seen": "2026-10-16",
+    "last_score": 0.07,
+    "last_seen": "2026-10-16"
   }
 }
